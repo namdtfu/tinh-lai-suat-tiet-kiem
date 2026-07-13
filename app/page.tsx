@@ -127,7 +127,8 @@ function calculateSavings(
 ) {
   const maturityDate = addMonthsClamped(startDate, term);
   const days = daysBetween(startDate, maturityDate);
-  const interest = amount * (interestRate / 100) * (days / 365);
+  const dailyRate = interestRate / 100 / 365;
+  const interest = amount * ((1 + dailyRate) ** days - 1);
   const tax = interest * 0.05;
   const interestAfterTax = interest - tax;
 
@@ -137,6 +138,27 @@ function calculateSavings(
     tax,
     interestAfterTax,
     totalAmount: amount + interestAfterTax,
+  };
+}
+
+function recalculateSavingsItem(item: SavingsItem): SavingsItem {
+  return {
+    ...item,
+    ...calculateSavings(
+      item.amount,
+      item.interestRate,
+      item.term,
+      item.startDate,
+    ),
+    history: (item.history ?? []).map((cycle) => ({
+      ...cycle,
+      ...calculateSavings(
+        cycle.amount,
+        cycle.interestRate,
+        cycle.term,
+        cycle.startDate,
+      ),
+    })),
   };
 }
 
@@ -209,7 +231,9 @@ export default function Home() {
     const storedSavings = readStoredArray<SavingsItem>(SAVINGS_KEY);
     const storedRates = readStoredArray<number>(RATES_KEY);
 
-    if (storedSavings) setSavings(storedSavings);
+    if (storedSavings) {
+      setSavings(storedSavings.map(recalculateSavingsItem));
+    }
     if (storedRates) {
       setInterestRates(
         storedRates
@@ -678,8 +702,9 @@ export default function Home() {
             </article>
           </div>
           <p className="calculation-note">
-            Lãi được tạm tính theo số ngày thực tế/365. Mức khấu trừ 5% được giữ
-            theo công thức bạn cung cấp và chỉ mang tính tham khảo.
+            Lãi kép được tính theo ngày: gốc × (1 + lãi suất năm/365)^số ngày.
+            Mức khấu trừ 5% được giữ theo công thức bạn cung cấp và chỉ mang
+            tính tham khảo.
           </p>
         </section>
 

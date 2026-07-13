@@ -51,5 +51,20 @@ test("keeps reinvestment history and term progress in the product source", async
   assert.match(page, /role="progressbar"/);
   assert.match(page, /className="history-timeline"/);
   assert.match(page, /item\.totalAmount/);
+  assert.match(page, /\(1 \+ dailyRate\) \*\* days - 1/);
+  assert.match(page, /storedSavings\.map\(recalculateSavingsItem\)/);
   assert.match(page, /Editing and reinvesting both replace the source item/);
+});
+
+test("matches the reference daily-compounding calculation", () => {
+  const principal = 35_406_152;
+  const annualRate = 6.8 / 100;
+  const days = 150;
+  const interest = principal * ((1 + annualRate / 365) ** days - 1);
+  const deduction = interest * 0.05;
+  const finalAmount = principal + interest - deduction;
+
+  assert.equal(Math.round(interest), 1_003_292);
+  assert.equal(Math.round(deduction), 50_165);
+  assert.equal(Math.round(finalAmount), 36_359_279);
 });
