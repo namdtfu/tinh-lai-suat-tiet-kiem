@@ -67,6 +67,8 @@ type InterestGoalPlan = {
   monthsToGoal: number | null;
   monthlyNetRate: number;
   progress: number;
+  projectedContributions: number | null;
+  projectedGrowth: number | null;
   requiredCapital: number;
   targetDate: string | null;
 };
@@ -210,10 +212,10 @@ function calculateInterestGoal(
   const currentMonthlyInterest = currentCapital * monthlyNetRate;
 
   let monthsToGoal: number | null = null;
+  let projectedCapital = currentCapital;
   if (currentCapital >= requiredCapital) {
     monthsToGoal = 0;
   } else if (currentCapital > 0 || monthlyContribution > 0) {
-    let projectedCapital = currentCapital;
     for (let month = 1; month <= MAX_GOAL_MONTHS; month += 1) {
       projectedCapital =
         projectedCapital * (1 + monthlyNetRate) + monthlyContribution;
@@ -224,12 +226,24 @@ function calculateInterestGoal(
     }
   }
 
+  const projectedContributions =
+    monthsToGoal === null ? null : monthlyContribution * monthsToGoal;
+  const projectedGrowth =
+    projectedContributions === null
+      ? null
+      : Math.max(
+          0,
+          projectedCapital - currentCapital - projectedContributions,
+        );
+
   return {
     capitalGap,
     currentMonthlyInterest,
     monthsToGoal,
     monthlyNetRate,
     progress,
+    projectedContributions,
+    projectedGrowth,
     requiredCapital,
     targetDate:
       monthsToGoal === null
@@ -516,19 +530,20 @@ export default function Home() {
     Number(goalInterestRate) > 0
       ? Number(goalInterestRate)
       : suggestedGoalRate;
+  const goalContribution = parseAmount(goalMonthlyContribution);
   const goalPlan = useMemo(
     () =>
       calculateInterestGoal(
         parseAmount(goalMonthlyInterest),
         effectiveGoalRate,
         currentPortfolio,
-        parseAmount(goalMonthlyContribution),
+        goalContribution,
         getTodayIso(),
       ),
     [
       currentPortfolio,
       effectiveGoalRate,
-      goalMonthlyContribution,
+      goalContribution,
       goalMonthlyInterest,
     ],
   );
@@ -1127,8 +1142,12 @@ export default function Home() {
                     {goalPlan.monthsToGoal === 0
                       ? `Danh mục hiện tại đã có thể tạo khoảng ${formatCurrency(goalPlan.currentMonthlyInterest)} lãi ròng mỗi tháng.`
                       : goalPlan.monthsToGoal !== null
-                        ? `Còn khoảng ${formatGoalDuration(goalPlan.monthsToGoal)} nếu toàn bộ vốn và lãi tiếp tục được tái đầu tư.`
-                        : "Hãy thêm vốn hiện tại hoặc nhập khoản góp hàng tháng để tính thời điểm đạt mục tiêu."}
+                        ? goalContribution > 0
+                          ? `Còn khoảng ${formatGoalDuration(goalPlan.monthsToGoal)} với mức góp ${formatCurrency(goalContribution)} mỗi tháng và toàn bộ lãi được tái đầu tư.`
+                          : `Còn khoảng ${formatGoalDuration(goalPlan.monthsToGoal)} nếu toàn bộ vốn và lãi tiếp tục được tái đầu tư.`
+                        : goalContribution > 0
+                          ? "Với mức góp hiện tại, thời gian đạt mục tiêu vượt quá 100 năm. Hãy tăng khoản góp hoặc lãi suất giả định."
+                          : "Hãy thêm vốn hiện tại hoặc nhập khoản góp hàng tháng để tính thời điểm đạt mục tiêu."}
                   </p>
 
                   <div className="goal-metrics">
@@ -1141,7 +1160,7 @@ export default function Home() {
                       <strong>{formatCurrency(goalPlan.requiredCapital)}</strong>
                     </div>
                     <div>
-                      <span>Còn thiếu</span>
+                      <span>Còn thiếu hôm nay</span>
                       <strong>{formatCurrency(goalPlan.capitalGap)}</strong>
                     </div>
                     <div>
@@ -1150,11 +1169,27 @@ export default function Home() {
                         {formatCurrency(goalPlan.currentMonthlyInterest)}
                       </strong>
                     </div>
+                    {goalPlan.projectedContributions !== null && (
+                      <div>
+                        <span>Tổng tiền tự góp đến mục tiêu</span>
+                        <strong>
+                          {formatCurrency(goalPlan.projectedContributions)}
+                        </strong>
+                      </div>
+                    )}
+                    {goalPlan.projectedGrowth !== null && (
+                      <div>
+                        <span>Lãi tích lũy đến mục tiêu</span>
+                        <strong>
+                          {formatCurrency(goalPlan.projectedGrowth)}
+                        </strong>
+                      </div>
+                    )}
                   </div>
 
                   <div className="goal-progress-block">
                     <div className="goal-progress-header">
-                      <span>Tiến độ vốn mục tiêu</span>
+                      <span>Tiến độ vốn hiện có</span>
                       <strong>{Math.round(goalPlan.progress)}%</strong>
                     </div>
                     <div
@@ -1167,6 +1202,13 @@ export default function Home() {
                     >
                       <span style={{ width: `${goalPlan.progress}%` }} />
                     </div>
+                    {goalContribution > 0 && (
+                      <p className="goal-progress-note">
+                        Khoản góp tương lai đã được dùng để tính ngày đạt mục
+                        tiêu, nhưng chưa được cộng vào phần trăm vốn hiện có hôm
+                        nay.
+                      </p>
+                    )}
                   </div>
                 </>
               ) : (

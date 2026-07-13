@@ -93,6 +93,9 @@ test("includes a monthly interest goal planner", async () => {
   assert.match(page, /Lãi ròng kỳ vọng mỗi tháng/);
   assert.match(page, /Góp thêm mỗi tháng/);
   assert.match(page, /Vốn cần có/);
+  assert.match(page, /Tổng tiền tự góp đến mục tiêu/);
+  assert.match(page, /Lãi tích lũy đến mục tiêu/);
+  assert.match(page, /Khoản góp tương lai đã được dùng để tính ngày đạt mục/);
   assert.match(page, /Tiến độ đạt vốn tạo lãi kỳ vọng/);
 
   const targetMonthlyInterest = 5_000_000;
@@ -106,5 +109,21 @@ test("includes a monthly interest goal planner", async () => {
   assert.equal(
     Math.round(requiredCapital * monthlyNetRate),
     targetMonthlyInterest,
+  );
+
+  const monthlyContribution = 10_000_000;
+  let projectedCapital = 0;
+  let monthsToGoal = 0;
+  while (projectedCapital < requiredCapital) {
+    projectedCapital =
+      projectedCapital * (1 + monthlyNetRate) + monthlyContribution;
+    monthsToGoal += 1;
+  }
+
+  assert.equal(monthsToGoal, 86);
+  assert.equal(monthlyContribution * monthsToGoal, 860_000_000);
+  assert.equal(
+    Math.round(projectedCapital - monthlyContribution * monthsToGoal),
+    199_718_948,
   );
 });

@@ -692,6 +692,13 @@ button {
   transition: width 240ms ease;
 }
 
+.goal-progress-note {
+  margin-top: 9px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.69rem;
+  line-height: 1.45;
+}
+
 .goal-empty-state {
   display: flex;
   max-width: 410px;
