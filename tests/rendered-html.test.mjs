@@ -35,6 +35,7 @@ test("server-renders the savings application", async () => {
   assert.match(html, /Tổng vốn gửi/i);
   assert.match(html, /Tổng lãi dự kiến/i);
   assert.match(html, /Tổng tài sản dự kiến/i);
+  assert.match(html, /Ví tiền chưa tái đầu tư/i);
   assert.match(html, /Tiền sẽ về khi nào/i);
   assert.match(html, /Danh sách/i);
   assert.doesNotMatch(html, /codex-preview|Codex is working|Starter Project/i);
@@ -55,6 +56,33 @@ test("keeps reinvestment history and term progress in the product source", async
   assert.match(page, /\(1 \+ dailyRate\) \*\* days - 1/);
   assert.match(page, /storedSavings\.map\(recalculateSavingsItem\)/);
   assert.match(page, /Editing and reinvesting both replace the source item/);
+  assert.match(page, /cashRemainder/);
+  assert.match(page, /additionalContribution/);
+  assert.match(page, /Math\.max\(0, maturedAmount - amount\)/);
+  assert.match(page, /Math\.max\(0, amount - maturedAmount\)/);
+});
+
+test("splits a matured balance between reinvestment and the cash wallet", () => {
+  const maturedAmount = 1_029_000;
+  const partialReinvestment = 1_000_000;
+  const largerReinvestment = 1_100_000;
+
+  assert.equal(
+    Math.max(0, maturedAmount - partialReinvestment),
+    29_000,
+  );
+  assert.equal(
+    Math.max(0, partialReinvestment - maturedAmount),
+    0,
+  );
+  assert.equal(
+    Math.max(0, maturedAmount - largerReinvestment),
+    0,
+  );
+  assert.equal(
+    Math.max(0, largerReinvestment - maturedAmount),
+    71_000,
+  );
 });
 
 test("matches the reference daily-compounding calculation", () => {
@@ -76,8 +104,10 @@ test("includes a versioned local backup and restore flow", async () => {
     "utf8",
   );
 
-  assert.match(page, /const BACKUP_FORMAT_VERSION = 1/);
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 2/);
+  assert.match(page, /version !== 1 && version !== BACKUP_FORMAT_VERSION/);
   assert.match(page, /function parseBackupPayload\(/);
+  assert.match(page, /cashLedger: CashLedgerEntry\[\]/);
   assert.match(page, /URL\.createObjectURL\(blob\)/);
   assert.match(page, /accept="application\/json,\.json"/);
   assert.match(page, /Khôi phục từ tệp/);

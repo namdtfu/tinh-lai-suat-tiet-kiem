@@ -12,8 +12,9 @@ import {
 const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
 const SAVINGS_KEY = "savings";
 const RATES_KEY = "interestRates";
+const CASH_LEDGER_KEY = "cashLedger";
 const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
-const BACKUP_FORMAT_VERSION = 1;
+const BACKUP_FORMAT_VERSION = 2;
 const MAX_BACKUP_SIZE = 5_000_000;
 const INTEREST_DEDUCTION_RATE = 0.05;
 const AVERAGE_DAYS_PER_MONTH = 365 / 12;
@@ -31,6 +32,9 @@ type SavingsCycle = {
   tax: number;
   interestAfterTax: number;
   totalAmount: number;
+  reinvestedAmount?: number;
+  cashRemainder?: number;
+  additionalContribution?: number;
 };
 
 type SavingsItem = SavingsCycle & {
@@ -48,12 +52,24 @@ type SavingsForm = {
   startDate: string;
 };
 
+type CashLedgerEntry = {
+  id: string;
+  amount: number;
+  date: string;
+  savingsId: number;
+  savingsName: string;
+  status: "available" | "used";
+  type: "reinvestment-remainder";
+  usedAt?: string;
+};
+
 type BackupPayload = {
   app: typeof BACKUP_APP_ID;
   version: typeof BACKUP_FORMAT_VERSION;
   exportedAt: string;
   savings: SavingsItem[];
   interestRates: number[];
+  cashLedger: CashLedgerEntry[];
 };
 
 type BackupStatus = {
@@ -352,6 +368,18 @@ function normalizeBackupCycle(value: unknown): SavingsCycle | null {
   const interestRate = Number(value.interestRate);
   const term = Number(value.term);
   const startDate = value.startDate;
+  const reinvestedAmount =
+    value.reinvestedAmount === undefined
+      ? undefined
+      : Number(value.reinvestedAmount);
+  const cashRemainder =
+    value.cashRemainder === undefined
+      ? undefined
+      : Number(value.cashRemainder);
+  const additionalContribution =
+    value.additionalContribution === undefined
+      ? undefined
+      : Number(value.additionalContribution);
 
   if (
     !Number.isFinite(amount) ||
@@ -361,7 +389,12 @@ function normalizeBackupCycle(value: unknown): SavingsCycle | null {
     interestRate > 100 ||
     !Number.isInteger(term) ||
     term < 1 ||
-    !isValidIsoDate(startDate)
+    !isValidIsoDate(startDate) ||
+    [reinvestedAmount, cashRemainder, additionalContribution].some(
+      (amountValue) =>
+        amountValue !== undefined &&
+        (!Number.isFinite(amountValue) || amountValue < 0),
+    )
   ) {
     return null;
   }
@@ -372,6 +405,49 @@ function normalizeBackupCycle(value: unknown): SavingsCycle | null {
     term,
     startDate,
     ...calculateSavings(amount, interestRate, term, startDate),
+    ...(reinvestedAmount === undefined ? {} : { reinvestedAmount }),
+    ...(cashRemainder === undefined ? {} : { cashRemainder }),
+    ...(additionalContribution === undefined
+      ? {}
+      : { additionalContribution }),
+  };
+}
+
+function normalizeCashLedgerEntry(value: unknown): CashLedgerEntry | null {
+  if (!isRecord(value)) return null;
+
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  const amount = Number(value.amount);
+  const savingsId = Number(value.savingsId);
+  const savingsName =
+    typeof value.savingsName === "string" ? value.savingsName.trim() : "";
+  const status = value.status;
+  const usedAt = value.usedAt;
+
+  if (
+    !id ||
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !isValidIsoDate(value.date) ||
+    !Number.isFinite(savingsId) ||
+    savingsId <= 0 ||
+    !savingsName ||
+    (status !== "available" && status !== "used") ||
+    value.type !== "reinvestment-remainder" ||
+    (usedAt !== undefined && !isValidIsoDate(usedAt))
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    amount,
+    date: value.date,
+    savingsId,
+    savingsName: savingsName.slice(0, 200),
+    status,
+    type: "reinvestment-remainder",
+    ...(usedAt === undefined ? {} : { usedAt }),
   };
 }
 
@@ -403,25 +479,32 @@ function normalizeBackupItem(value: unknown): SavingsItem | null {
 }
 
 function parseBackupPayload(value: unknown): BackupPayload | null {
+  const version = isRecord(value) ? Number(value.version) : 0;
+  const rawCashLedger =
+    isRecord(value) && version === 1 ? [] : isRecord(value) ? value.cashLedger : null;
+
   if (
     !isRecord(value) ||
     value.app !== BACKUP_APP_ID ||
-    value.version !== BACKUP_FORMAT_VERSION ||
+    (version !== 1 && version !== BACKUP_FORMAT_VERSION) ||
     typeof value.exportedAt !== "string" ||
     !Array.isArray(value.savings) ||
-    !Array.isArray(value.interestRates)
+    !Array.isArray(value.interestRates) ||
+    !Array.isArray(rawCashLedger)
   ) {
     return null;
   }
 
   const savings = value.savings.map(normalizeBackupItem);
   const interestRates = value.interestRates.map(Number);
+  const cashLedger = rawCashLedger.map(normalizeCashLedgerEntry);
   const savingsIds = new Set(
     savings.flatMap((item) => (item ? [item.id] : [])),
   );
 
   if (
     savings.some((item) => item === null) ||
+    cashLedger.some((entry) => entry === null) ||
     savingsIds.size !== savings.length ||
     interestRates.some(
       (rate) => !Number.isFinite(rate) || rate <= 0 || rate > 100,
@@ -436,6 +519,7 @@ function parseBackupPayload(value: unknown): BackupPayload | null {
     exportedAt: value.exportedAt,
     savings: savings as SavingsItem[],
     interestRates: [...new Set(interestRates)],
+    cashLedger: cashLedger as CashLedgerEntry[],
   };
 }
 
@@ -504,7 +588,13 @@ function formatAmountInput(value: string | number) {
   return new Intl.NumberFormat("vi-VN").format(Number(digits));
 }
 
-function toSavingsCycle(item: SavingsCycle): SavingsCycle {
+function toSavingsCycle(
+  item: SavingsCycle,
+  transition: Pick<
+    SavingsCycle,
+    "reinvestedAmount" | "cashRemainder" | "additionalContribution"
+  > = {},
+): SavingsCycle {
   return {
     amount: item.amount,
     interestRate: item.interestRate,
@@ -515,6 +605,7 @@ function toSavingsCycle(item: SavingsCycle): SavingsCycle {
     tax: item.tax,
     interestAfterTax: item.interestAfterTax,
     totalAmount: item.totalAmount,
+    ...transition,
   };
 }
 
@@ -532,6 +623,7 @@ function readStoredArray<T>(key: string): T[] | null {
 export default function Home() {
   const [savings, setSavings] = useState<SavingsItem[]>([]);
   const [interestRates, setInterestRates] = useState(DEFAULT_INTEREST_RATES);
+  const [cashLedger, setCashLedger] = useState<CashLedgerEntry[]>([]);
   const [form, setForm] = useState<SavingsForm>(emptyForm());
   const [newInterestRate, setNewInterestRate] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -556,6 +648,7 @@ export default function Home() {
     /* eslint-disable react-hooks/set-state-in-effect -- localStorage is client-only, so persisted data must be hydrated after mount. */
     const storedSavings = readStoredArray<SavingsItem>(SAVINGS_KEY);
     const storedRates = readStoredArray<number>(RATES_KEY);
+    const storedCashLedger = readStoredArray<CashLedgerEntry>(CASH_LEDGER_KEY);
 
     if (storedSavings) {
       setSavings(storedSavings.map(recalculateSavingsItem));
@@ -565,6 +658,14 @@ export default function Home() {
         storedRates
           .filter((rate) => Number.isFinite(Number(rate)) && Number(rate) > 0)
           .map(Number),
+      );
+    }
+    if (storedCashLedger) {
+      setCashLedger(
+        storedCashLedger.flatMap((entry) => {
+          const normalizedEntry = normalizeCashLedgerEntry(entry);
+          return normalizedEntry ? [normalizedEntry] : [];
+        }),
       );
     }
     setForm(emptyForm(getTodayIso()));
@@ -579,6 +680,10 @@ export default function Home() {
   useEffect(() => {
     if (ready) localStorage.setItem(RATES_KEY, JSON.stringify(interestRates));
   }, [interestRates, ready]);
+
+  useEffect(() => {
+    if (ready) localStorage.setItem(CASH_LEDGER_KEY, JSON.stringify(cashLedger));
+  }, [cashLedger, ready]);
 
   const sortedRates = useMemo(
     () => [...interestRates].sort((a, b) => b - a),
@@ -595,14 +700,28 @@ export default function Home() {
     return [...groups.entries()].sort(([rateA], [rateB]) => rateB - rateA);
   }, [savings]);
 
+  const cashBalance = useMemo(
+    () =>
+      cashLedger.reduce(
+        (sum, entry) =>
+          entry.status === "available" ? sum + entry.amount : sum,
+        0,
+      ),
+    [cashLedger],
+  );
+
   const summary = useMemo(() => {
     const principal = savings.reduce((sum, item) => sum + item.amount, 0);
     const interest = savings.reduce(
       (sum, item) => sum + item.interestAfterTax,
       0,
     );
-    return { principal, interest, assets: principal + interest };
-  }, [savings]);
+    return {
+      principal,
+      interest,
+      assets: principal + interest + cashBalance,
+    };
+  }, [cashBalance, savings]);
 
   const today = getTodayIso();
   const monthlyInterestTarget = parseAmount(goalMonthlyInterest);
@@ -753,6 +872,20 @@ export default function Home() {
         ? undefined
         : savings.find((current) => current.id === editingId);
     const previousHistory = sourceItem?.history ?? [];
+    const maturedAmount =
+      mode === "reinvest" && sourceItem
+        ? Math.round(sourceItem.totalAmount)
+        : 0;
+    const cashRemainder = Math.max(0, maturedAmount - amount);
+    const additionalContribution = Math.max(0, amount - maturedAmount);
+    const completedCycle =
+      mode === "reinvest" && sourceItem
+        ? toSavingsCycle(sourceItem, {
+            reinvestedAmount: amount,
+            cashRemainder,
+            additionalContribution,
+          })
+        : null;
     const item: SavingsItem = {
       id: editingId ?? Date.now(),
       name: form.name.trim() || "Khoản tiết kiệm",
@@ -762,8 +895,8 @@ export default function Home() {
       startDate: form.startDate,
       ...calculation,
       history:
-        mode === "reinvest" && sourceItem
-          ? [...previousHistory, toSavingsCycle(sourceItem)]
+        completedCycle
+          ? [...previousHistory, completedCycle]
           : previousHistory,
     };
 
@@ -771,12 +904,36 @@ export default function Home() {
       setSavings((items) =>
         items.map((current) => (current.id === editingId ? item : current)),
       );
-      setMessage(
-        mode === "reinvest"
-          ? `Đã chuyển toàn bộ gốc và lãi ròng của “${item.name}” sang kỳ tái đầu tư mới.`
-          : `Đã cập nhật “${item.name}”.`,
-      );
-      if (mode === "reinvest") setExpandedHistoryId(item.id);
+      if (mode === "reinvest" && sourceItem) {
+        if (cashRemainder > 0) {
+          setCashLedger((entries) => [
+            ...entries,
+            {
+              id: `${Date.now()}-${sourceItem.id}-${previousHistory.length}`,
+              amount: cashRemainder,
+              date: item.startDate,
+              savingsId: sourceItem.id,
+              savingsName: item.name,
+              status: "available",
+              type: "reinvestment-remainder",
+            },
+          ]);
+          setMessage(
+            `Đã tái đầu tư ${formatCurrency(amount)} và chuyển ${formatCurrency(cashRemainder)} vào Ví tiền chưa tái đầu tư.`,
+          );
+        } else if (additionalContribution > 0) {
+          setMessage(
+            `Đã tái đầu tư ${formatCurrency(amount)}, gồm ${formatCurrency(additionalContribution)} vốn bổ sung thêm.`,
+          );
+        } else {
+          setMessage(
+            `Đã chuyển ${formatCurrency(amount)} sang kỳ tái đầu tư mới.`,
+          );
+        }
+        setExpandedHistoryId(item.id);
+      } else {
+        setMessage(`Đã cập nhật “${item.name}”.`);
+      }
     } else {
       setSavings((items) => [...items, item]);
       setMessage(`Đã thêm “${item.name}”.`);
@@ -812,6 +969,29 @@ export default function Home() {
     if (editingId === id) resetForm();
     if (expandedHistoryId === id) setExpandedHistoryId(null);
     setMessage(`Đã xóa “${item.name}”.`);
+  }
+
+  function toggleCashEntryStatus(id: string) {
+    const entry = cashLedger.find((current) => current.id === id);
+    if (!entry) return;
+
+    const markAsUsed = entry.status === "available";
+    setCashLedger((entries) =>
+      entries.map((current) =>
+        current.id === id
+          ? {
+              ...current,
+              status: markAsUsed ? "used" : "available",
+              usedAt: markAsUsed ? getTodayIso() : undefined,
+            }
+          : current,
+      ),
+    );
+    setMessage(
+      markAsUsed
+        ? `Đã đánh dấu ${formatCurrency(entry.amount)} trong ví là đã sử dụng.`
+        : `Đã hoàn tác và đưa ${formatCurrency(entry.amount)} trở lại số dư ví.`,
+    );
   }
 
   function prepareItem(item: SavingsItem, nextMode: FormMode) {
@@ -870,6 +1050,7 @@ export default function Home() {
       exportedAt: new Date().toISOString(),
       savings,
       interestRates,
+      cashLedger,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -884,7 +1065,7 @@ export default function Home() {
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
     setBackupStatus({
       kind: "success",
-      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản gửi. Hãy lưu tệp vào nơi bạn có thể mở trên thiết bị khác.`,
+      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản gửi và ${cashLedger.length} giao dịch ví. Hãy lưu tệp vào nơi bạn có thể mở trên thiết bị khác.`,
     });
   }
 
@@ -912,6 +1093,7 @@ export default function Home() {
 
       setSavings(payload.savings);
       setInterestRates(payload.interestRates);
+      setCashLedger(payload.cashLedger);
       setCollapsedRates(new Set());
       setExpandedHistoryId(null);
       resetForm();
@@ -1195,9 +1377,71 @@ export default function Home() {
               <div>
                 <h3>Tổng tài sản dự kiến</h3>
                 <p>{formatCurrency(summary.assets)}</p>
-                <small>Vốn + lãi sau khấu trừ</small>
+                <small>Vốn + lãi + tiền đang giữ trong ví</small>
               </div>
             </article>
+          </div>
+          <div className="cash-wallet">
+            <div className="wallet-overview">
+              <span className="wallet-icon" aria-hidden="true">₫</span>
+              <div className="wallet-copy">
+                <span>VÍ TIỀN CHƯA TÁI ĐẦU TƯ</span>
+                <h3>Phần tiền đáo hạn đang được giữ lại</h3>
+                <p>
+                  Tiền không đưa vào kỳ mới sẽ nằm ở đây, không bị tính nhầm
+                  là vốn đang gửi.
+                </p>
+              </div>
+              <div className="wallet-balance">
+                <span>Số dư khả dụng</span>
+                <strong>{formatCurrency(cashBalance)}</strong>
+                <small>
+                  {cashLedger.filter((entry) => entry.status === "available").length}{" "}
+                  khoản đang giữ
+                </small>
+              </div>
+            </div>
+
+            {cashLedger.length > 0 ? (
+              <details className="wallet-history">
+                <summary>
+                  <span>Lịch sử ví ({cashLedger.length})</span>
+                  <span aria-hidden="true">⌄</span>
+                </summary>
+                <div className="wallet-entry-list">
+                  {[...cashLedger].reverse().map((entry) => (
+                    <article
+                      className={`wallet-entry ${entry.status}`}
+                      key={entry.id}
+                    >
+                      <div>
+                        <strong>{entry.savingsName}</strong>
+                        <span>
+                          Tách ra khi tái đầu tư ngày {formatDate(entry.date)}
+                          {entry.usedAt
+                            ? ` · Đã dùng ngày ${formatDate(entry.usedAt)}`
+                            : ""}
+                        </span>
+                      </div>
+                      <strong>{formatCurrency(entry.amount)}</strong>
+                      <button
+                        type="button"
+                        onClick={() => toggleCashEntryStatus(entry.id)}
+                      >
+                        {entry.status === "available"
+                          ? "Đánh dấu đã dùng"
+                          : "Hoàn tác"}
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </details>
+            ) : (
+              <p className="wallet-empty">
+                Chưa có tiền giữ lại. Khi tái đầu tư ít hơn số nhận cuối kỳ,
+                phần chênh lệch sẽ tự động xuất hiện tại đây.
+              </p>
+            )}
           </div>
           <p className="calculation-note">
             Lãi kép được tính theo ngày: gốc × (1 + lãi suất năm/365)^số ngày.
@@ -1662,9 +1906,9 @@ export default function Home() {
             <div className="backup-copy">
               <h3>Mang dữ liệu sang thiết bị khác</h3>
               <p>
-                Tải một tệp chứa toàn bộ khoản gửi, lịch sử tái đầu tư và danh
-                sách lãi suất. Trên thiết bị khác, mở ứng dụng rồi chọn khôi
-                phục từ tệp.
+                Tải một tệp chứa toàn bộ khoản gửi, lịch sử tái đầu tư, ví tiền
+                chưa tái đầu tư và danh sách lãi suất. Trên thiết bị khác, mở
+                ứng dụng rồi chọn khôi phục từ tệp.
               </p>
             </div>
             <div className="backup-actions">
@@ -1960,6 +2204,9 @@ export default function Home() {
                                       {cycles.map((cycle, cycleIndex) => {
                                         const isCurrentCycle =
                                           cycleIndex === cycles.length - 1;
+                                        const nextCyclePrincipal =
+                                          cycle.reinvestedAmount ??
+                                          cycle.totalAmount;
 
                                         return (
                                           <div
@@ -2051,15 +2298,49 @@ export default function Home() {
                                             </div>
 
                                             {!isCurrentCycle && (
-                                              <div className="rollover-link">
-                                                <span aria-hidden="true">↓</span>
-                                                Tái đầu tư{" "}
-                                                <strong>
-                                                  {formatCurrency(
-                                                    cycle.totalAmount,
+                                              <div className="cycle-transition">
+                                                <div className="transition-heading">
+                                                  <span aria-hidden="true">↓</span>
+                                                  <strong>
+                                                    Phân bổ sau đáo hạn
+                                                  </strong>
+                                                </div>
+                                                <div className="transition-values">
+                                                  <span>
+                                                    <small>
+                                                      Gốc kỳ {cycleIndex + 2}
+                                                    </small>
+                                                    <strong>
+                                                      {formatCurrency(
+                                                        nextCyclePrincipal,
+                                                      )}
+                                                    </strong>
+                                                  </span>
+                                                  {(cycle.cashRemainder ?? 0) >
+                                                    0 && (
+                                                    <span className="transition-wallet">
+                                                      <small>Chuyển vào ví</small>
+                                                      <strong>
+                                                        {formatCurrency(
+                                                          cycle.cashRemainder ?? 0,
+                                                        )}
+                                                      </strong>
+                                                    </span>
                                                   )}
-                                                </strong>{" "}
-                                                vào kỳ {cycleIndex + 2}
+                                                  {(cycle.additionalContribution ??
+                                                    0) > 0 && (
+                                                    <span className="transition-extra">
+                                                      <small>Vốn bổ sung</small>
+                                                      <strong>
+                                                        +
+                                                        {formatCurrency(
+                                                          cycle.additionalContribution ??
+                                                            0,
+                                                        )}
+                                                      </strong>
+                                                    </span>
+                                                  )}
+                                                </div>
                                               </div>
                                             )}
                                           </div>
