@@ -35,6 +35,7 @@ test("server-renders the savings application", async () => {
   assert.match(html, /Tổng vốn gửi/i);
   assert.match(html, /Tổng lãi dự kiến/i);
   assert.match(html, /Tổng tài sản dự kiến/i);
+  assert.match(html, /Tiền sẽ về khi nào/i);
   assert.match(html, /Danh sách/i);
   assert.doesNotMatch(html, /codex-preview|Codex is working|Starter Project/i);
 });
@@ -126,4 +127,22 @@ test("includes a monthly interest goal planner", async () => {
     Math.round(projectedCapital - monthlyContribution * monthsToGoal),
     199_718_948,
   );
+});
+
+test("includes an interactive maturity cashflow and ladder view", async () => {
+  const page = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(page, /type CashflowPeriod = 12 \| 24/);
+  assert.match(page, /function buildCashflowSchedule\(/);
+  assert.match(page, /month\.principal \+= item\.amount/);
+  assert.match(page, /month\.interest \+= item\.interestAfterTax/);
+  assert.match(page, /Dòng tiền đáo hạn theo tháng/);
+  assert.match(page, /Đáo hạn trong 7 ngày/);
+  assert.match(page, /Đáo hạn từ 8–30 ngày/);
+  assert.match(page, /aria-pressed=\{isSelected\}/);
+  assert.match(page, /Thang đáo hạn/);
+  assert.match(page, /\{\[3, 6, 9, 12\]\.map/);
 });
