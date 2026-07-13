@@ -85,6 +85,21 @@ test("splits a matured balance between reinvestment and the cash wallet", () => 
   );
 });
 
+test("deletes wallet entries with their source savings item", async () => {
+  const page = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    page,
+    /entries\.filter\(\(entry\) => entry\.savingsId !== id\)/,
+  );
+  assert.match(page, /giao dịch ví liên quan/);
+  assert.match(page, /customInterestRate: String\(rate\)/);
+  assert.match(page, /Rút khỏi ví/);
+});
+
 test("matches the reference daily-compounding calculation", () => {
   const principal = 35_406_152;
   const annualRate = 6.8 / 100;
@@ -111,7 +126,7 @@ test("includes a versioned local backup and restore flow", async () => {
   assert.match(page, /URL\.createObjectURL\(blob\)/);
   assert.match(page, /accept="application\/json,\.json"/);
   assert.match(page, /Khôi phục từ tệp/);
-  assert.match(page, /Dữ liệu hiện có trên thiết bị này sẽ bị thay thế/);
+  assert.match(page, /bao gồm khoản gửi và ví tiền, sẽ bị thay thế/);
 });
 
 test("includes a monthly interest goal planner", async () => {

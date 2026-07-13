@@ -958,17 +958,52 @@ export default function Home() {
 
   function handleDeleteRate(rate: number) {
     setInterestRates((rates) => rates.filter((current) => current !== rate));
-    if (Number(form.interestRate) === rate) updateForm("interestRate", "");
-    setMessage(`Đã xóa mức lãi suất ${formatRate(rate)}%.`);
+    if (Number(form.interestRate) === rate) {
+      setForm((current) => ({
+        ...current,
+        interestRate: "",
+        customInterestRate: String(rate),
+      }));
+    }
+    setMessage(
+      `Đã xóa mức ${formatRate(rate)}% khỏi danh sách chọn nhanh. Các khoản gửi đang dùng mức này không bị thay đổi.`,
+    );
   }
 
   function handleDelete(id: number) {
     const item = savings.find((current) => current.id === id);
-    if (!item || !window.confirm(`Xóa khoản gửi “${item.name}”?`)) return;
+    if (!item) return;
+
+    const linkedWalletEntries = cashLedger.filter(
+      (entry) => entry.savingsId === id,
+    );
+    const linkedWalletTotal = linkedWalletEntries.reduce(
+      (sum, entry) => sum + entry.amount,
+      0,
+    );
+    const walletWarning = linkedWalletEntries.length
+      ? `\n\n${linkedWalletEntries.length} giao dịch ví liên quan, tổng ${formatCurrency(linkedWalletTotal)}, cũng sẽ được xóa.`
+      : "";
+
+    if (
+      !window.confirm(
+        `Xóa khoản gửi “${item.name}” cùng toàn bộ lịch sử tái đầu tư?${walletWarning}`,
+      )
+    ) {
+      return;
+    }
+
     setSavings((items) => items.filter((current) => current.id !== id));
+    setCashLedger((entries) =>
+      entries.filter((entry) => entry.savingsId !== id),
+    );
     if (editingId === id) resetForm();
     if (expandedHistoryId === id) setExpandedHistoryId(null);
-    setMessage(`Đã xóa “${item.name}”.`);
+    setMessage(
+      linkedWalletEntries.length
+        ? `Đã xóa “${item.name}” cùng ${linkedWalletEntries.length} giao dịch ví liên quan.`
+        : `Đã xóa “${item.name}”.`,
+    );
   }
 
   function toggleCashEntryStatus(id: string) {
@@ -989,8 +1024,8 @@ export default function Home() {
     );
     setMessage(
       markAsUsed
-        ? `Đã đánh dấu ${formatCurrency(entry.amount)} trong ví là đã sử dụng.`
-        : `Đã hoàn tác và đưa ${formatCurrency(entry.amount)} trở lại số dư ví.`,
+        ? `Đã rút ${formatCurrency(entry.amount)} khỏi số dư ví.`
+        : `Đã đưa ${formatCurrency(entry.amount)} trở lại số dư ví.`,
     );
   }
 
@@ -1087,7 +1122,7 @@ export default function Home() {
       if (!payload) throw new Error("Invalid backup");
 
       const shouldRestore = window.confirm(
-        `Khôi phục ${payload.savings.length} khoản gửi từ bản sao lưu? Dữ liệu hiện có trên thiết bị này sẽ bị thay thế.`,
+        `Khôi phục ${payload.savings.length} khoản gửi và ${payload.cashLedger.length} giao dịch ví từ bản sao lưu? Dữ liệu hiện có trên thiết bị này, bao gồm khoản gửi và ví tiền, sẽ bị thay thế.`,
       );
       if (!shouldRestore) return;
 
@@ -1419,7 +1454,7 @@ export default function Home() {
                         <span>
                           Tách ra khi tái đầu tư ngày {formatDate(entry.date)}
                           {entry.usedAt
-                            ? ` · Đã dùng ngày ${formatDate(entry.usedAt)}`
+                            ? ` · Đã rút ngày ${formatDate(entry.usedAt)}`
                             : ""}
                         </span>
                       </div>
@@ -1429,8 +1464,8 @@ export default function Home() {
                         onClick={() => toggleCashEntryStatus(entry.id)}
                       >
                         {entry.status === "available"
-                          ? "Đánh dấu đã dùng"
-                          : "Hoàn tác"}
+                          ? "Rút khỏi ví"
+                          : "Đưa lại vào ví"}
                       </button>
                     </article>
                   ))}
@@ -1940,8 +1975,9 @@ export default function Home() {
               />
             </div>
             <p className="backup-note">
-              Khôi phục sẽ thay thế dữ liệu trên thiết bị hiện tại. Tệp chỉ được
-              xử lý trong trình duyệt và không được tải lên máy chủ.
+              Khôi phục sẽ thay thế toàn bộ khoản gửi và ví tiền trên thiết bị
+              hiện tại. Tệp chỉ được xử lý trong trình duyệt và không được tải
+              lên máy chủ.
             </p>
           </div>
         </section>
