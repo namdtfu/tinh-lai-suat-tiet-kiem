@@ -68,3 +68,17 @@ test("matches the reference daily-compounding calculation", () => {
   assert.equal(Math.round(deduction), 50_165);
   assert.equal(Math.round(finalAmount), 36_359_279);
 });
+
+test("includes a versioned local backup and restore flow", async () => {
+  const page = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 1/);
+  assert.match(page, /function parseBackupPayload\(/);
+  assert.match(page, /URL\.createObjectURL\(blob\)/);
+  assert.match(page, /accept="application\/json,\.json"/);
+  assert.match(page, /Khôi phục từ tệp/);
+  assert.match(page, /Dữ liệu hiện có trên thiết bị này sẽ bị thay thế/);
+});

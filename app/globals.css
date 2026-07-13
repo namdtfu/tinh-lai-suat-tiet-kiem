@@ -139,6 +139,7 @@ button {
 
 .form-section,
 .summary-section,
+.backup-section,
 .list-section {
   padding: 44px 52px;
 }
@@ -150,6 +151,11 @@ button {
 
 .summary-section {
   border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.backup-section {
+  background: #fff;
   border-bottom: 1px solid var(--line);
 }
 
@@ -512,6 +518,148 @@ button {
   margin-top: 16px;
   color: #8b8492;
   font-size: 0.75rem;
+}
+
+.backup-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px 18px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 95% 0%, rgba(111, 75, 216, 0.11), transparent 30%),
+    #faf9fc;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.backup-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  grid-row: span 2;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--violet), var(--violet-deep));
+  border-radius: 13px;
+  box-shadow: 0 10px 20px rgba(77, 45, 165, 0.18);
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.backup-copy h3 {
+  margin-bottom: 5px;
+  font-size: 1rem;
+}
+
+.backup-copy p,
+.backup-note {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.backup-actions {
+  display: flex;
+  grid-column: 2;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.backup-download,
+.backup-restore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.backup-download {
+  min-width: 190px;
+}
+
+.backup-restore {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.backup-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+  transform: none;
+}
+
+.backup-note {
+  grid-column: 2;
+  padding-top: 13px;
+  border-top: 1px dashed #ddd5e8;
+  font-size: 0.74rem;
+}
+
+.backup-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -8px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 0.86rem;
+}
+
+.backup-status.success {
+  color: #17684d;
+  background: #eaf8f2;
+  border-color: #c5eadc;
+}
+
+.backup-status.error {
+  color: #983646;
+  background: #fff0f2;
+  border-color: #f1cbd1;
+}
+
+.backup-status > span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.backup-status.success > span {
+  background: #1b8d66;
+}
+
+.backup-status.error > span {
+  background: #c44152;
+}
+
+.backup-status button {
+  margin-left: auto;
+  padding: 0 4px;
+  color: currentColor;
+  background: transparent;
+  border: 0;
+  font-size: 1.2rem;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 .deposit-count {
@@ -1116,6 +1264,7 @@ footer {
   .hero,
   .form-section,
   .summary-section,
+  .backup-section,
   .list-section {
     padding-right: 32px;
     padding-left: 32px;
@@ -1167,6 +1316,7 @@ footer {
 
   .form-section,
   .summary-section,
+  .backup-section,
   .list-section {
     padding: 34px 22px;
   }
@@ -1199,14 +1349,30 @@ footer {
   }
 
   .form-actions,
-  .group-header {
+  .group-header,
+  .backup-actions {
     flex-direction: column;
     align-items: stretch;
   }
 
   .btn-primary,
-  .btn-cancel {
+  .btn-cancel,
+  .backup-restore {
     width: 100%;
+  }
+
+  .backup-card {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-icon,
+  .backup-actions,
+  .backup-note {
+    grid-column: auto;
+  }
+
+  .backup-icon {
+    grid-row: auto;
   }
 
   .group-summary {

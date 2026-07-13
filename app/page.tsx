@@ -1,10 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
 const SAVINGS_KEY = "savings";
 const RATES_KEY = "interestRates";
+const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
+const BACKUP_FORMAT_VERSION = 1;
+const MAX_BACKUP_SIZE = 5_000_000;
 
 type FormMode = "add" | "edit" | "reinvest";
 
@@ -33,6 +43,19 @@ type SavingsForm = {
   customInterestRate: string;
   term: string;
   startDate: string;
+};
+
+type BackupPayload = {
+  app: typeof BACKUP_APP_ID;
+  version: typeof BACKUP_FORMAT_VERSION;
+  exportedAt: string;
+  savings: SavingsItem[];
+  interestRates: number[];
+};
+
+type BackupStatus = {
+  kind: "success" | "error";
+  text: string;
 };
 
 const emptyForm = (startDate = ""): SavingsForm => ({
@@ -162,6 +185,112 @@ function recalculateSavingsItem(item: SavingsItem): SavingsItem {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = parseLocalDate(value);
+  return !Number.isNaN(parsed.getTime()) && toLocalIso(parsed) === value;
+}
+
+function normalizeBackupCycle(value: unknown): SavingsCycle | null {
+  if (!isRecord(value)) return null;
+
+  const amount = Number(value.amount);
+  const interestRate = Number(value.interestRate);
+  const term = Number(value.term);
+  const startDate = value.startDate;
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !Number.isFinite(interestRate) ||
+    interestRate <= 0 ||
+    interestRate > 100 ||
+    !Number.isInteger(term) ||
+    term < 1 ||
+    !isValidIsoDate(startDate)
+  ) {
+    return null;
+  }
+
+  return {
+    amount,
+    interestRate,
+    term,
+    startDate,
+    ...calculateSavings(amount, interestRate, term, startDate),
+  };
+}
+
+function normalizeBackupItem(value: unknown): SavingsItem | null {
+  if (!isRecord(value)) return null;
+  const cycle = normalizeBackupCycle(value);
+  const id = Number(value.id);
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const rawHistory = value.history ?? [];
+
+  if (
+    !cycle ||
+    !Number.isFinite(id) ||
+    id <= 0 ||
+    !Array.isArray(rawHistory)
+  ) {
+    return null;
+  }
+
+  const history = rawHistory.map(normalizeBackupCycle);
+  if (history.some((item) => item === null)) return null;
+
+  return {
+    ...cycle,
+    id,
+    name: (name || "Khoản tiết kiệm").slice(0, 200),
+    history: history as SavingsCycle[],
+  };
+}
+
+function parseBackupPayload(value: unknown): BackupPayload | null {
+  if (
+    !isRecord(value) ||
+    value.app !== BACKUP_APP_ID ||
+    value.version !== BACKUP_FORMAT_VERSION ||
+    typeof value.exportedAt !== "string" ||
+    !Array.isArray(value.savings) ||
+    !Array.isArray(value.interestRates)
+  ) {
+    return null;
+  }
+
+  const savings = value.savings.map(normalizeBackupItem);
+  const interestRates = value.interestRates.map(Number);
+  const savingsIds = new Set(
+    savings.flatMap((item) => (item ? [item.id] : [])),
+  );
+
+  if (
+    savings.some((item) => item === null) ||
+    savingsIds.size !== savings.length ||
+    interestRates.some(
+      (rate) => !Number.isFinite(rate) || rate <= 0 || rate > 100,
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    app: BACKUP_APP_ID,
+    version: BACKUP_FORMAT_VERSION,
+    exportedAt: value.exportedAt,
+    savings: savings as SavingsItem[],
+    interestRates: [...new Set(interestRates)],
+  };
+}
+
 function formatCurrency(amount: number) {
   return currencyFormatter.format(Math.round(amount));
 }
@@ -224,7 +353,9 @@ export default function Home() {
     null,
   );
   const [message, setMessage] = useState("");
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [ready, setReady] = useState(false);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- localStorage is client-only, so persisted data must be hydrated after mount. */
@@ -429,6 +560,70 @@ export default function Home() {
     });
   }
 
+  function handleExportBackup() {
+    const payload: BackupPayload = {
+      app: BACKUP_APP_ID,
+      version: BACKUP_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      savings,
+      interestRates,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `tiet-kiem-backup-${getTodayIso()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+    setBackupStatus({
+      kind: "success",
+      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản gửi. Hãy lưu tệp vào nơi bạn có thể mở trên thiết bị khác.`,
+    });
+  }
+
+  async function handleImportBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (file.size > MAX_BACKUP_SIZE) {
+      setBackupStatus({
+        kind: "error",
+        text: "Tệp sao lưu vượt quá 5 MB và không thể khôi phục.",
+      });
+      return;
+    }
+
+    try {
+      const payload = parseBackupPayload(JSON.parse(await file.text()));
+      if (!payload) throw new Error("Invalid backup");
+
+      const shouldRestore = window.confirm(
+        `Khôi phục ${payload.savings.length} khoản gửi từ bản sao lưu? Dữ liệu hiện có trên thiết bị này sẽ bị thay thế.`,
+      );
+      if (!shouldRestore) return;
+
+      setSavings(payload.savings);
+      setInterestRates(payload.interestRates);
+      setCollapsedRates(new Set());
+      setExpandedHistoryId(null);
+      resetForm();
+      setBackupStatus({
+        kind: "success",
+        text: `Đã khôi phục ${payload.savings.length} khoản gửi. Dữ liệu đã được lưu trên thiết bị này.`,
+      });
+    } catch {
+      setBackupStatus({
+        kind: "error",
+        text: "Không thể đọc tệp này. Hãy chọn đúng tệp JSON được tạo từ ứng dụng.",
+      });
+    }
+  }
+
   const submitLabel =
     mode === "edit"
       ? "Lưu thay đổi"
@@ -450,7 +645,7 @@ export default function Home() {
           </div>
           <div className="privacy-pill" aria-label="Dữ liệu được lưu cục bộ">
             <span aria-hidden="true">◉</span>
-            Lưu tự động trên thiết bị
+            Lưu cục bộ · có sao lưu
           </div>
         </header>
 
@@ -706,6 +901,79 @@ export default function Home() {
             Mức khấu trừ 5% được giữ theo công thức bạn cung cấp và chỉ mang
             tính tham khảo.
           </p>
+        </section>
+
+        <section className="backup-section" aria-labelledby="backup-title">
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">AN TOÀN DỮ LIỆU</span>
+              <h2 id="backup-title">Sao lưu và khôi phục</h2>
+            </div>
+            <span className="step-badge">03</span>
+          </div>
+
+          {backupStatus && (
+            <div
+              className={`backup-status ${backupStatus.kind}`}
+              role={backupStatus.kind === "error" ? "alert" : "status"}
+            >
+              <span aria-hidden="true">
+                {backupStatus.kind === "error" ? "!" : "✓"}
+              </span>
+              <p>{backupStatus.text}</p>
+              <button
+                type="button"
+                onClick={() => setBackupStatus(null)}
+                aria-label="Đóng thông báo sao lưu"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          <div className="backup-card">
+            <span className="backup-icon" aria-hidden="true">↕</span>
+            <div className="backup-copy">
+              <h3>Mang dữ liệu sang thiết bị khác</h3>
+              <p>
+                Tải một tệp chứa toàn bộ khoản gửi, lịch sử tái đầu tư và danh
+                sách lãi suất. Trên thiết bị khác, mở ứng dụng rồi chọn khôi
+                phục từ tệp.
+              </p>
+            </div>
+            <div className="backup-actions">
+              <button
+                type="button"
+                className="btn-primary backup-download"
+                onClick={handleExportBackup}
+                disabled={!ready}
+              >
+                <span aria-hidden="true">↓</span>
+                Tải bản sao lưu
+              </button>
+              <button
+                type="button"
+                className="btn-secondary backup-restore"
+                onClick={() => backupInputRef.current?.click()}
+                disabled={!ready}
+              >
+                <span aria-hidden="true">↑</span>
+                Khôi phục từ tệp
+              </button>
+              <input
+                ref={backupInputRef}
+                className="visually-hidden"
+                type="file"
+                accept="application/json,.json"
+                onChange={handleImportBackup}
+                tabIndex={-1}
+              />
+            </div>
+            <p className="backup-note">
+              Khôi phục sẽ thay thế dữ liệu trên thiết bị hiện tại. Tệp chỉ được
+              xử lý trong trình duyệt và không được tải lên máy chủ.
+            </p>
+          </div>
         </section>
 
         <section className="list-section" aria-labelledby="list-title">
