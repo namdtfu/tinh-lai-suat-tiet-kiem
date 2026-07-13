@@ -15,6 +15,9 @@ const RATES_KEY = "interestRates";
 const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
 const BACKUP_FORMAT_VERSION = 1;
 const MAX_BACKUP_SIZE = 5_000_000;
+const INTEREST_DEDUCTION_RATE = 0.05;
+const AVERAGE_DAYS_PER_MONTH = 365 / 12;
+const MAX_GOAL_MONTHS = 1_200;
 
 type FormMode = "add" | "edit" | "reinvest";
 
@@ -56,6 +59,16 @@ type BackupPayload = {
 type BackupStatus = {
   kind: "success" | "error";
   text: string;
+};
+
+type InterestGoalPlan = {
+  capitalGap: number;
+  currentMonthlyInterest: number;
+  monthsToGoal: number | null;
+  monthlyNetRate: number;
+  progress: number;
+  requiredCapital: number;
+  targetDate: string | null;
 };
 
 const emptyForm = (startDate = ""): SavingsForm => ({
@@ -152,7 +165,7 @@ function calculateSavings(
   const days = daysBetween(startDate, maturityDate);
   const dailyRate = interestRate / 100 / 365;
   const interest = amount * ((1 + dailyRate) ** days - 1);
-  const tax = interest * 0.05;
+  const tax = interest * INTEREST_DEDUCTION_RATE;
   const interestAfterTax = interest - tax;
 
   return {
@@ -161,6 +174,67 @@ function calculateSavings(
     tax,
     interestAfterTax,
     totalAmount: amount + interestAfterTax,
+  };
+}
+
+function calculateCycleValueOnDate(cycle: SavingsCycle, date: string) {
+  if (date <= cycle.startDate) return cycle.amount;
+  const calculationDate = date < cycle.maturityDate ? date : cycle.maturityDate;
+  const elapsedDays = daysBetween(cycle.startDate, calculationDate);
+  const dailyRate = cycle.interestRate / 100 / 365;
+  const interest = cycle.amount * ((1 + dailyRate) ** elapsedDays - 1);
+  return cycle.amount + interest * (1 - INTEREST_DEDUCTION_RATE);
+}
+
+function calculateInterestGoal(
+  targetMonthlyInterest: number,
+  annualInterestRate: number,
+  currentCapital: number,
+  monthlyContribution: number,
+  startDate: string,
+): InterestGoalPlan | null {
+  if (
+    targetMonthlyInterest <= 0 ||
+    annualInterestRate <= 0 ||
+    annualInterestRate > 100
+  ) {
+    return null;
+  }
+
+  const monthlyGrossRate =
+    (1 + annualInterestRate / 100 / 365) ** AVERAGE_DAYS_PER_MONTH - 1;
+  const monthlyNetRate = monthlyGrossRate * (1 - INTEREST_DEDUCTION_RATE);
+  const requiredCapital = targetMonthlyInterest / monthlyNetRate;
+  const capitalGap = Math.max(0, requiredCapital - currentCapital);
+  const progress = Math.min(100, (currentCapital / requiredCapital) * 100);
+  const currentMonthlyInterest = currentCapital * monthlyNetRate;
+
+  let monthsToGoal: number | null = null;
+  if (currentCapital >= requiredCapital) {
+    monthsToGoal = 0;
+  } else if (currentCapital > 0 || monthlyContribution > 0) {
+    let projectedCapital = currentCapital;
+    for (let month = 1; month <= MAX_GOAL_MONTHS; month += 1) {
+      projectedCapital =
+        projectedCapital * (1 + monthlyNetRate) + monthlyContribution;
+      if (projectedCapital >= requiredCapital) {
+        monthsToGoal = month;
+        break;
+      }
+    }
+  }
+
+  return {
+    capitalGap,
+    currentMonthlyInterest,
+    monthsToGoal,
+    monthlyNetRate,
+    progress,
+    requiredCapital,
+    targetDate:
+      monthsToGoal === null
+        ? null
+        : addMonthsClamped(startDate, monthsToGoal),
   };
 }
 
@@ -306,6 +380,16 @@ function formatRate(rate: number) {
   }).format(rate);
 }
 
+function formatGoalDuration(months: number) {
+  if (months === 0) return "Ngay bây giờ";
+  if (months < 12) return `${months} tháng`;
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+  return remainingMonths
+    ? `${years} năm ${remainingMonths} tháng`
+    : `${years} năm`;
+}
+
 function parseAmount(value: string) {
   return Number(value.replace(/\D/g, "")) || 0;
 }
@@ -354,6 +438,9 @@ export default function Home() {
   );
   const [message, setMessage] = useState("");
   const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
+  const [goalMonthlyInterest, setGoalMonthlyInterest] = useState("");
+  const [goalInterestRate, setGoalInterestRate] = useState("");
+  const [goalMonthlyContribution, setGoalMonthlyContribution] = useState("");
   const [ready, setReady] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -408,6 +495,43 @@ export default function Home() {
     );
     return { principal, interest, assets: principal + interest };
   }, [savings]);
+
+  const currentPortfolio = useMemo(() => {
+    const today = getTodayIso();
+    return savings.reduce(
+      (sum, item) => sum + calculateCycleValueOnDate(item, today),
+      0,
+    );
+  }, [savings]);
+
+  const suggestedGoalRate = useMemo(() => {
+    if (summary.principal <= 0) return 6;
+    return savings.reduce(
+      (sum, item) => sum + item.amount * item.interestRate,
+      0,
+    ) / summary.principal;
+  }, [savings, summary.principal]);
+
+  const effectiveGoalRate =
+    Number(goalInterestRate) > 0
+      ? Number(goalInterestRate)
+      : suggestedGoalRate;
+  const goalPlan = useMemo(
+    () =>
+      calculateInterestGoal(
+        parseAmount(goalMonthlyInterest),
+        effectiveGoalRate,
+        currentPortfolio,
+        parseAmount(goalMonthlyContribution),
+        getTodayIso(),
+      ),
+    [
+      currentPortfolio,
+      effectiveGoalRate,
+      goalMonthlyContribution,
+      goalMonthlyInterest,
+    ],
+  );
 
   function updateForm(field: keyof SavingsForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -903,13 +1027,174 @@ export default function Home() {
           </p>
         </section>
 
+        <section className="goal-section" aria-labelledby="goal-title">
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">MỤC TIÊU THU NHẬP</span>
+              <h2 id="goal-title">Khi nào lãi đạt kỳ vọng mỗi tháng?</h2>
+            </div>
+            <span className="step-badge">03</span>
+          </div>
+
+          <div className="goal-layout">
+            <div className="goal-form-card">
+              <div className="goal-card-heading">
+                <span aria-hidden="true">◎</span>
+                <div>
+                  <h3>Thiết lập mục tiêu</h3>
+                  <p>Nhập số lãi ròng bạn muốn nhận trung bình mỗi tháng.</p>
+                </div>
+              </div>
+              <div className="goal-form-grid">
+                <div className="form-group goal-field-wide">
+                  <label htmlFor="goalMonthlyInterest">
+                    Lãi ròng kỳ vọng mỗi tháng
+                  </label>
+                  <div className="input-with-suffix">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      id="goalMonthlyInterest"
+                      value={goalMonthlyInterest}
+                      onChange={(event) =>
+                        setGoalMonthlyInterest(
+                          formatAmountInput(event.target.value),
+                        )
+                      }
+                      placeholder="5.000.000"
+                    />
+                    <span>₫</span>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="goalInterestRate">
+                    Lãi suất giả định (%/năm)
+                  </label>
+                  <div className="input-with-suffix">
+                    <input
+                      type="number"
+                      id="goalInterestRate"
+                      min="0.01"
+                      max="100"
+                      step="0.01"
+                      value={goalInterestRate}
+                      onChange={(event) => setGoalInterestRate(event.target.value)}
+                      placeholder={formatRate(suggestedGoalRate)}
+                    />
+                    <span>%</span>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="goalMonthlyContribution">
+                    Góp thêm mỗi tháng (không bắt buộc)
+                  </label>
+                  <div className="input-with-suffix">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      id="goalMonthlyContribution"
+                      value={goalMonthlyContribution}
+                      onChange={(event) =>
+                        setGoalMonthlyContribution(
+                          formatAmountInput(event.target.value),
+                        )
+                      }
+                      placeholder="0"
+                    />
+                    <span>₫</span>
+                  </div>
+                </div>
+              </div>
+              <p className="goal-rate-note">
+                Để trống lãi suất sẽ dùng mức bình quân danh mục hiện tại là{
+                " "}
+                <strong>{formatRate(suggestedGoalRate)}%/năm</strong>.
+              </p>
+            </div>
+
+            <div className={`goal-result-card${goalPlan ? " has-result" : ""}`}>
+              {goalPlan ? (
+                <>
+                  <span className="goal-result-kicker">DỰ KIẾN ĐẠT MỤC TIÊU</span>
+                  <h3>
+                    {goalPlan.monthsToGoal === 0
+                      ? "Bạn đã đạt mục tiêu"
+                      : goalPlan.targetDate
+                        ? formatDate(goalPlan.targetDate)
+                        : "Cần thêm kế hoạch tích lũy"}
+                  </h3>
+                  <p className="goal-result-summary">
+                    {goalPlan.monthsToGoal === 0
+                      ? `Danh mục hiện tại đã có thể tạo khoảng ${formatCurrency(goalPlan.currentMonthlyInterest)} lãi ròng mỗi tháng.`
+                      : goalPlan.monthsToGoal !== null
+                        ? `Còn khoảng ${formatGoalDuration(goalPlan.monthsToGoal)} nếu toàn bộ vốn và lãi tiếp tục được tái đầu tư.`
+                        : "Hãy thêm vốn hiện tại hoặc nhập khoản góp hàng tháng để tính thời điểm đạt mục tiêu."}
+                  </p>
+
+                  <div className="goal-metrics">
+                    <div>
+                      <span>Vốn hiện tại</span>
+                      <strong>{formatCurrency(currentPortfolio)}</strong>
+                    </div>
+                    <div>
+                      <span>Vốn cần có</span>
+                      <strong>{formatCurrency(goalPlan.requiredCapital)}</strong>
+                    </div>
+                    <div>
+                      <span>Còn thiếu</span>
+                      <strong>{formatCurrency(goalPlan.capitalGap)}</strong>
+                    </div>
+                    <div>
+                      <span>Lãi hiện tại/tháng</span>
+                      <strong>
+                        {formatCurrency(goalPlan.currentMonthlyInterest)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="goal-progress-block">
+                    <div className="goal-progress-header">
+                      <span>Tiến độ vốn mục tiêu</span>
+                      <strong>{Math.round(goalPlan.progress)}%</strong>
+                    </div>
+                    <div
+                      className="goal-progress-track"
+                      role="progressbar"
+                      aria-label="Tiến độ đạt vốn tạo lãi kỳ vọng"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(goalPlan.progress)}
+                    >
+                      <span style={{ width: `${goalPlan.progress}%` }} />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="goal-empty-state">
+                  <span aria-hidden="true">₫</span>
+                  <h3>Ví dụ: 5 triệu đồng mỗi tháng</h3>
+                  <p>
+                    Nhập mục tiêu để xem số vốn cần có, phần còn thiếu và ngày
+                    dự kiến đạt được.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="goal-calculation-note">
+            Ước tính dùng lãi kép theo ngày, quy đổi một tháng bằng 365/12 ngày
+            và trừ 5% trên tiền lãi. Kết quả giả định vốn được tái đầu tư liên
+            tục; thực tế có thể khác theo kỳ hạn và chính sách ngân hàng.
+          </p>
+        </section>
+
         <section className="backup-section" aria-labelledby="backup-title">
           <div className="section-heading">
             <div>
               <span className="section-kicker">AN TOÀN DỮ LIỆU</span>
               <h2 id="backup-title">Sao lưu và khôi phục</h2>
             </div>
-            <span className="step-badge">03</span>
+            <span className="step-badge">04</span>
           </div>
 
           {backupStatus && (

@@ -82,3 +82,29 @@ test("includes a versioned local backup and restore flow", async () => {
   assert.match(page, /Khôi phục từ tệp/);
   assert.match(page, /Dữ liệu hiện có trên thiết bị này sẽ bị thay thế/);
 });
+
+test("includes a monthly interest goal planner", async () => {
+  const page = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(page, /function calculateInterestGoal\(/);
+  assert.match(page, /Lãi ròng kỳ vọng mỗi tháng/);
+  assert.match(page, /Góp thêm mỗi tháng/);
+  assert.match(page, /Vốn cần có/);
+  assert.match(page, /Tiến độ đạt vốn tạo lãi kỳ vọng/);
+
+  const targetMonthlyInterest = 5_000_000;
+  const annualRate = 6 / 100;
+  const monthlyGrossRate =
+    (1 + annualRate / 365) ** (365 / 12) - 1;
+  const monthlyNetRate = monthlyGrossRate * 0.95;
+  const requiredCapital = targetMonthlyInterest / monthlyNetRate;
+
+  assert.equal(Math.round(requiredCapital), 1_050_088_708);
+  assert.equal(
+    Math.round(requiredCapital * monthlyNetRate),
+    targetMonthlyInterest,
+  );
+});
