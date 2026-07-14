@@ -208,6 +208,29 @@ test("includes a versioned local backup and restore flow", async () => {
   assert.match(page, /bao gồm khoản gửi và ví tiền, sẽ bị thay thế/);
 });
 
+test("includes invite-only cloud accounts with per-user database isolation", async () => {
+  const [page, client, schema, envExample] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase-rest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /Đăng nhập vào dữ liệu của bạn/);
+  assert.match(page, /Đưa dữ liệu này lên tài khoản/);
+  assert.match(page, /createCloudAppState\(/);
+  assert.match(page, /writeCloudState\(activeSession, state\)/);
+  assert.match(client, /create_user: false/);
+  assert.match(client, /grant_type=refresh_token/);
+  assert.match(client, /on_conflict/);
+  assert.doesNotMatch(client, /service[_-]?role/i);
+  assert.match(schema, /alter table public\.user_app_state enable row level security/i);
+  assert.match(schema, /\(select auth\.uid\(\)\) = user_id/);
+  assert.match(schema, /to authenticated/);
+  assert.match(envExample, /NEXT_PUBLIC_SUPABASE_URL/);
+  assert.match(envExample, /NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY/);
+});
+
 test("includes a monthly interest goal planner", async () => {
   const page = await readFile(
     new URL("../app/page.tsx", import.meta.url),

@@ -8,11 +8,23 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  CloudSession,
+  consumeMagicLinkSession,
+  ensureCloudSession,
+  isCloudConfigured,
+  readCloudState,
+  restoreCloudSession,
+  sendMagicLink,
+  signOutCloud,
+  writeCloudState,
+} from "@/lib/supabase-rest";
 
 const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
 const SAVINGS_KEY = "savings";
 const RATES_KEY = "interestRates";
 const CASH_LEDGER_KEY = "cashLedger";
+const GOAL_SETTINGS_KEY = "goalSettings";
 const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
 const BACKUP_FORMAT_VERSION = 2;
 const MAX_BACKUP_SIZE = 5_000_000;
@@ -76,6 +88,21 @@ type BackupStatus = {
   kind: "success" | "error";
   text: string;
 };
+
+type CloudAppState = {
+  cashLedger: CashLedgerEntry[];
+  goal: {
+    interestRate: string;
+    monthlyContribution: string;
+    monthlyInterest: string;
+  };
+  interestRates: number[];
+  savings: SavingsItem[];
+  schemaVersion: 1;
+};
+
+type AuthStatus = "checking" | "local" | "signed-in" | "signed-out";
+type CloudSyncStatus = "idle" | "saving" | "saved" | "error";
 
 type InterestGoalPlan = {
   capitalGap: number;
@@ -569,6 +596,63 @@ function parseBackupPayload(value: unknown): BackupPayload | null {
   };
 }
 
+function parseCloudAppState(value: unknown): CloudAppState | null {
+  if (!isRecord(value) || Number(value.schemaVersion) !== 1) return null;
+
+  const backup = parseBackupPayload({
+    app: BACKUP_APP_ID,
+    version: BACKUP_FORMAT_VERSION,
+    exportedAt: new Date().toISOString(),
+    savings: value.savings,
+    interestRates: value.interestRates,
+    cashLedger: value.cashLedger,
+  });
+  if (!backup) return null;
+
+  const goal = isRecord(value.goal) ? value.goal : {};
+  const monthlyInterest =
+    typeof goal.monthlyInterest === "string" ? goal.monthlyInterest : "";
+  const interestRate =
+    typeof goal.interestRate === "string" ? goal.interestRate : "";
+  const monthlyContribution =
+    typeof goal.monthlyContribution === "string"
+      ? goal.monthlyContribution
+      : "";
+
+  return {
+    schemaVersion: 1,
+    savings: backup.savings,
+    interestRates: backup.interestRates,
+    cashLedger: backup.cashLedger,
+    goal: {
+      monthlyInterest: monthlyInterest.slice(0, 30),
+      interestRate: interestRate.slice(0, 20),
+      monthlyContribution: monthlyContribution.slice(0, 30),
+    },
+  };
+}
+
+function createCloudAppState(
+  savings: SavingsItem[],
+  interestRates: number[],
+  cashLedger: CashLedgerEntry[],
+  goalMonthlyInterest: string,
+  goalInterestRate: string,
+  goalMonthlyContribution: string,
+): CloudAppState {
+  return {
+    schemaVersion: 1,
+    savings,
+    interestRates,
+    cashLedger,
+    goal: {
+      monthlyInterest: goalMonthlyInterest,
+      interestRate: goalInterestRate,
+      monthlyContribution: goalMonthlyContribution,
+    },
+  };
+}
+
 function formatCurrency(amount: number) {
   return currencyFormatter.format(Math.round(amount));
 }
@@ -666,6 +750,17 @@ function readStoredArray<T>(key: string): T[] | null {
   }
 }
 
+function readStoredRecord<T>(key: string): T | null {
+  try {
+    const value = localStorage.getItem(key);
+    if (!value) return null;
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? (parsed as T) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Home() {
   const [savings, setSavings] = useState<SavingsItem[]>([]);
   const [interestRates, setInterestRates] = useState(DEFAULT_INTEREST_RATES);
@@ -687,6 +782,19 @@ export default function Home() {
   const [selectedCashflowMonth, setSelectedCashflowMonth] = useState(
     getMonthKey(getTodayIso()),
   );
+  const cloudConfigured = isCloudConfigured();
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(
+    cloudConfigured ? "checking" : "local",
+  );
+  const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudSyncStatus, setCloudSyncStatus] =
+    useState<CloudSyncStatus>("idle");
+  const [cloudError, setCloudError] = useState("");
+  const [migrationPending, setMigrationPending] = useState(false);
+  const [cloudActionBusy, setCloudActionBusy] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginMessage, setLoginMessage] = useState("");
   const [ready, setReady] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -695,41 +803,220 @@ export default function Home() {
     const storedSavings = readStoredArray<SavingsItem>(SAVINGS_KEY);
     const storedRates = readStoredArray<number>(RATES_KEY);
     const storedCashLedger = readStoredArray<CashLedgerEntry>(CASH_LEDGER_KEY);
+    const storedGoal = readStoredRecord<CloudAppState["goal"]>(
+      GOAL_SETTINGS_KEY,
+    );
+    const localSavings = storedSavings
+      ? storedSavings.map(recalculateSavingsItem)
+      : [];
+    const localRates = storedRates
+      ? storedRates
+          .filter(
+            (rate) =>
+              Number.isFinite(Number(rate)) &&
+              Number(rate) > 0 &&
+              Number(rate) <= 100,
+          )
+          .map(Number)
+      : DEFAULT_INTEREST_RATES;
+    const localCashLedger =
+      storedCashLedger?.flatMap((entry) => {
+        const normalizedEntry = normalizeCashLedgerEntry(entry);
+        return normalizedEntry ? [normalizedEntry] : [];
+      }) ?? [];
+    const localGoal = {
+      monthlyInterest: storedGoal?.monthlyInterest ?? "",
+      interestRate: storedGoal?.interestRate ?? "",
+      monthlyContribution: storedGoal?.monthlyContribution ?? "",
+    };
 
-    if (storedSavings) {
-      setSavings(storedSavings.map(recalculateSavingsItem));
+    setSavings(localSavings);
+    setInterestRates(localRates);
+    setCashLedger(localCashLedger);
+    setGoalMonthlyInterest(localGoal.monthlyInterest);
+    setGoalInterestRate(localGoal.interestRate);
+    setGoalMonthlyContribution(localGoal.monthlyContribution);
+    setForm(emptyForm(getTodayIso()));
+
+    async function initializeCloud() {
+      if (!cloudConfigured) {
+        setAuthStatus("local");
+        setReady(true);
+        return;
+      }
+
+      let session: CloudSession | null = null;
+      try {
+        session =
+          (await consumeMagicLinkSession()) ?? (await restoreCloudSession());
+        if (!session) {
+          setAuthStatus("signed-out");
+          setReady(true);
+          return;
+        }
+
+        session = await ensureCloudSession(session);
+        setCloudSession(session);
+        setAuthStatus("signed-in");
+        const remoteRow = await readCloudState<unknown>(session);
+        if (remoteRow) {
+          const remoteState = parseCloudAppState(remoteRow.data);
+          if (!remoteState) {
+            throw new Error("Dữ liệu trên tài khoản không đúng định dạng.");
+          }
+          setSavings(remoteState.savings);
+          setInterestRates(remoteState.interestRates);
+          setCashLedger(remoteState.cashLedger);
+          setGoalMonthlyInterest(remoteState.goal.monthlyInterest);
+          setGoalInterestRate(remoteState.goal.interestRate);
+          setGoalMonthlyContribution(remoteState.goal.monthlyContribution);
+          setCloudReady(true);
+          setCloudSyncStatus("saved");
+        } else {
+          const hasCustomRates =
+            JSON.stringify([...localRates].sort((a, b) => a - b)) !==
+            JSON.stringify(
+              [...DEFAULT_INTEREST_RATES].sort((a, b) => a - b),
+            );
+          const hasLocalData = Boolean(
+            localSavings.length ||
+              localCashLedger.length ||
+              hasCustomRates ||
+              localGoal.monthlyInterest ||
+              localGoal.interestRate ||
+              localGoal.monthlyContribution,
+          );
+          setMigrationPending(hasLocalData);
+          setCloudReady(!hasLocalData);
+        }
+      } catch (error) {
+        const text =
+          error instanceof Error
+            ? error.message
+            : "Không thể kết nối tài khoản lúc này.";
+        if (session) {
+          setCloudSession(session);
+          setAuthStatus("signed-in");
+          setCloudError(text);
+          setCloudSyncStatus("error");
+        } else {
+          setAuthStatus("signed-out");
+          setLoginMessage(text);
+        }
+      } finally {
+        setReady(true);
+      }
     }
-    if (storedRates) {
-      setInterestRates(
-        storedRates
-          .filter((rate) => Number.isFinite(Number(rate)) && Number(rate) > 0)
-          .map(Number),
-      );
+
+    void initializeCloud();
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [cloudConfigured]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
+      localStorage.removeItem(SAVINGS_KEY);
+    } else if (authStatus === "local" || migrationPending) {
+      localStorage.setItem(SAVINGS_KEY, JSON.stringify(savings));
     }
-    if (storedCashLedger) {
-      setCashLedger(
-        storedCashLedger.flatMap((entry) => {
-          const normalizedEntry = normalizeCashLedgerEntry(entry);
-          return normalizedEntry ? [normalizedEntry] : [];
+  }, [authStatus, cloudReady, migrationPending, ready, savings]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
+      localStorage.removeItem(RATES_KEY);
+    } else if (authStatus === "local" || migrationPending) {
+      localStorage.setItem(RATES_KEY, JSON.stringify(interestRates));
+    }
+  }, [authStatus, cloudReady, interestRates, migrationPending, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
+      localStorage.removeItem(CASH_LEDGER_KEY);
+    } else if (authStatus === "local" || migrationPending) {
+      localStorage.setItem(CASH_LEDGER_KEY, JSON.stringify(cashLedger));
+    }
+  }, [authStatus, cashLedger, cloudReady, migrationPending, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
+      localStorage.removeItem(GOAL_SETTINGS_KEY);
+    } else if (authStatus === "local" || migrationPending) {
+      localStorage.setItem(
+        GOAL_SETTINGS_KEY,
+        JSON.stringify({
+          monthlyInterest: goalMonthlyInterest,
+          interestRate: goalInterestRate,
+          monthlyContribution: goalMonthlyContribution,
         }),
       );
     }
-    setForm(emptyForm(getTodayIso()));
-    setReady(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, []);
+  }, [
+    authStatus,
+    cloudReady,
+    goalInterestRate,
+    goalMonthlyContribution,
+    goalMonthlyInterest,
+    migrationPending,
+    ready,
+  ]);
 
   useEffect(() => {
-    if (ready) localStorage.setItem(SAVINGS_KEY, JSON.stringify(savings));
-  }, [ready, savings]);
+    if (
+      !ready ||
+      authStatus !== "signed-in" ||
+      !cloudSession ||
+      !cloudReady ||
+      migrationPending
+    ) {
+      return;
+    }
 
-  useEffect(() => {
-    if (ready) localStorage.setItem(RATES_KEY, JSON.stringify(interestRates));
-  }, [interestRates, ready]);
+    const timeout = window.setTimeout(() => {
+      const state = createCloudAppState(
+        savings,
+        interestRates,
+        cashLedger,
+        goalMonthlyInterest,
+        goalInterestRate,
+        goalMonthlyContribution,
+      );
+      setCloudSyncStatus("saving");
+      void ensureCloudSession(cloudSession)
+        .then((activeSession) => {
+          if (activeSession !== cloudSession) setCloudSession(activeSession);
+          return writeCloudState(activeSession, state);
+        })
+        .then(() => {
+          setCloudError("");
+          setCloudSyncStatus("saved");
+        })
+        .catch((error: unknown) => {
+          setCloudError(
+            error instanceof Error
+              ? error.message
+              : "Không thể đồng bộ dữ liệu.",
+          );
+          setCloudSyncStatus("error");
+        });
+    }, 800);
 
-  useEffect(() => {
-    if (ready) localStorage.setItem(CASH_LEDGER_KEY, JSON.stringify(cashLedger));
-  }, [cashLedger, ready]);
+    return () => window.clearTimeout(timeout);
+  }, [
+    authStatus,
+    cashLedger,
+    cloudReady,
+    cloudSession,
+    goalInterestRate,
+    goalMonthlyContribution,
+    goalMonthlyInterest,
+    interestRates,
+    migrationPending,
+    ready,
+    savings,
+  ]);
 
   const sortedRates = useMemo(
     () => [...interestRates].sort((a, b) => b - a),
@@ -1220,6 +1507,261 @@ export default function Home() {
     }
   }
 
+  async function handleMagicLinkSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = loginEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setLoginMessage("Hãy nhập một địa chỉ email hợp lệ.");
+      return;
+    }
+
+    setCloudActionBusy(true);
+    setLoginMessage("");
+    try {
+      await sendMagicLink(
+        email,
+        `${window.location.origin}${window.location.pathname}`,
+      );
+      setLoginMessage(
+        "Nếu email đã được mời, đường dẫn đăng nhập vừa được gửi. Hãy kiểm tra cả thư rác.",
+      );
+    } catch (error) {
+      setLoginMessage(
+        error instanceof Error
+          ? error.message
+          : "Chưa thể gửi đường dẫn đăng nhập.",
+      );
+    } finally {
+      setCloudActionBusy(false);
+    }
+  }
+
+  async function handleCloudSignOut() {
+    setCloudActionBusy(true);
+    try {
+      await signOutCloud(cloudSession);
+    } finally {
+      setCloudSession(null);
+      setCloudReady(false);
+      setMigrationPending(false);
+      setCloudError("");
+      setCloudSyncStatus("idle");
+      setAuthStatus("signed-out");
+      setCloudActionBusy(false);
+    }
+  }
+
+  async function handleMigrateLocalData() {
+    if (!cloudSession) return;
+    setCloudActionBusy(true);
+    setCloudError("");
+    try {
+      const activeSession = await ensureCloudSession(cloudSession);
+      const state = createCloudAppState(
+        savings,
+        interestRates,
+        cashLedger,
+        goalMonthlyInterest,
+        goalInterestRate,
+        goalMonthlyContribution,
+      );
+      await writeCloudState(activeSession, state);
+      setCloudSession(activeSession);
+      setMigrationPending(false);
+      setCloudReady(true);
+      setCloudSyncStatus("saved");
+    } catch (error) {
+      setCloudError(
+        error instanceof Error
+          ? error.message
+          : "Không thể chuyển dữ liệu lên tài khoản.",
+      );
+      setCloudSyncStatus("error");
+    } finally {
+      setCloudActionBusy(false);
+    }
+  }
+
+  async function handleStartFreshAccount() {
+    if (!cloudSession) return;
+    if (
+      !window.confirm(
+        "Bắt đầu tài khoản trống? Dữ liệu cũ trên thiết bị sẽ không được đưa lên tài khoản. Hãy tải bản sao lưu trước nếu vẫn cần giữ dữ liệu đó.",
+      )
+    ) {
+      return;
+    }
+
+    setCloudActionBusy(true);
+    setCloudError("");
+    try {
+      const activeSession = await ensureCloudSession(cloudSession);
+      const emptyState = createCloudAppState(
+        [],
+        DEFAULT_INTEREST_RATES,
+        [],
+        "",
+        "",
+        "",
+      );
+      await writeCloudState(activeSession, emptyState);
+      setSavings([]);
+      setInterestRates(DEFAULT_INTEREST_RATES);
+      setCashLedger([]);
+      setGoalMonthlyInterest("");
+      setGoalInterestRate("");
+      setGoalMonthlyContribution("");
+      setCloudSession(activeSession);
+      setMigrationPending(false);
+      setCloudReady(true);
+      setCloudSyncStatus("saved");
+    } catch (error) {
+      setCloudError(
+        error instanceof Error
+          ? error.message
+          : "Không thể tạo tài khoản trống.",
+      );
+      setCloudSyncStatus("error");
+    } finally {
+      setCloudActionBusy(false);
+    }
+  }
+
+  if (cloudConfigured && (!ready || authStatus === "checking")) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card auth-loading" aria-live="polite">
+          <span className="auth-mark" aria-hidden="true">₫</span>
+          <h1>Đang mở sổ tiết kiệm của bạn</h1>
+          <p>Ứng dụng đang kiểm tra phiên đăng nhập và dữ liệu đã lưu.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (cloudConfigured && authStatus === "signed-out") {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card">
+          <span className="auth-kicker">SỔ TIẾT KIỆM CÁ NHÂN</span>
+          <span className="auth-mark" aria-hidden="true">₫</span>
+          <h1>Đăng nhập vào dữ liệu của bạn</h1>
+          <p>
+            Nhập email đã được mời. Chúng tôi sẽ gửi một đường dẫn đăng nhập,
+            không cần mật khẩu.
+          </p>
+          <form className="auth-form" onSubmit={handleMagicLinkSubmit}>
+            <label htmlFor="loginEmail">Email</label>
+            <input
+              id="loginEmail"
+              type="email"
+              autoComplete="email"
+              value={loginEmail}
+              onChange={(event) => setLoginEmail(event.target.value)}
+              placeholder="ban@example.com"
+              required
+            />
+            <button type="submit" disabled={cloudActionBusy}>
+              {cloudActionBusy ? "Đang gửi…" : "Gửi đường dẫn đăng nhập"}
+            </button>
+          </form>
+          {loginMessage && (
+            <div className="auth-message" role="status">{loginMessage}</div>
+          )}
+          <small>
+            Tài khoản được giới hạn theo danh sách mời. Dữ liệu của mỗi người
+            được tách riêng tại database.
+          </small>
+        </section>
+      </main>
+    );
+  }
+
+  if (
+    cloudConfigured &&
+    authStatus === "signed-in" &&
+    cloudSession &&
+    !cloudReady &&
+    cloudError &&
+    !migrationPending
+  ) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card">
+          <span className="auth-mark auth-mark-error" aria-hidden="true">!</span>
+          <h1>Chưa tải được dữ liệu</h1>
+          <p>{cloudError}</p>
+          <div className="auth-actions">
+            <button type="button" onClick={() => window.location.reload()}>
+              Thử lại
+            </button>
+            <button
+              type="button"
+              className="auth-button-secondary"
+              onClick={() => void handleCloudSignOut()}
+            >
+              Đăng xuất
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (
+    cloudConfigured &&
+    authStatus === "signed-in" &&
+    cloudSession &&
+    migrationPending
+  ) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card migration-card">
+          <span className="auth-kicker">CHUYỂN DỮ LIỆU AN TOÀN</span>
+          <span className="auth-mark" aria-hidden="true">⇧</span>
+          <h1>Thiết bị này đang có dữ liệu cũ</h1>
+          <p>
+            Tìm thấy <strong>{savings.length} khoản gửi</strong> và{
+            " "}<strong>{cashLedger.length} giao dịch ví</strong>. Ứng dụng sẽ
+            không tự ghi đè cho đến khi bạn chọn.
+          </p>
+          {cloudError && (
+            <div className="auth-message auth-message-error" role="alert">
+              {cloudError}
+            </div>
+          )}
+          <div className="migration-actions">
+            <button
+              type="button"
+              disabled={cloudActionBusy}
+              onClick={() => void handleMigrateLocalData()}
+            >
+              {cloudActionBusy
+                ? "Đang chuyển dữ liệu…"
+                : "Đưa dữ liệu này lên tài khoản"}
+            </button>
+            <button
+              type="button"
+              className="auth-button-secondary"
+              onClick={handleExportBackup}
+            >
+              Tải bản sao lưu trước
+            </button>
+            <button
+              type="button"
+              className="auth-button-text"
+              disabled={cloudActionBusy}
+              onClick={() => void handleStartFreshAccount()}
+            >
+              Bắt đầu bằng tài khoản trống
+            </button>
+          </div>
+          <small>Đang đăng nhập bằng {cloudSession.user.email}.</small>
+        </section>
+      </main>
+    );
+  }
+
   const submitLabel =
     mode === "edit"
       ? "Lưu thay đổi"
@@ -1239,11 +1781,44 @@ export default function Home() {
               đáo hạn — tất cả trong một nơi.
             </p>
           </div>
-          <div className="privacy-pill" aria-label="Dữ liệu được lưu cục bộ">
-            <span aria-hidden="true">◉</span>
-            Lưu cục bộ · có sao lưu
-          </div>
+          {authStatus === "signed-in" && cloudSession ? (
+            <div className="account-pill">
+              <div>
+                <span className={`sync-dot ${cloudSyncStatus}`} aria-hidden="true" />
+                <strong>
+                  {cloudSyncStatus === "saving"
+                    ? "Đang đồng bộ"
+                    : cloudSyncStatus === "error"
+                      ? "Chưa đồng bộ"
+                      : "Đã lưu trên tài khoản"}
+                </strong>
+                <small>{cloudSession.user.email}</small>
+              </div>
+              <button
+                type="button"
+                disabled={cloudActionBusy}
+                onClick={() => void handleCloudSignOut()}
+              >
+                Đăng xuất
+              </button>
+            </div>
+          ) : (
+            <div className="privacy-pill" aria-label="Dữ liệu được lưu cục bộ">
+              <span aria-hidden="true">◉</span>
+              Chế độ cục bộ · có sao lưu
+            </div>
+          )}
         </header>
+
+        {cloudError && cloudReady && (
+          <div className="cloud-error-banner" role="alert">
+            <span aria-hidden="true">!</span>
+            <div>
+              <strong>Thay đổi vẫn còn trên màn hình này</strong>
+              <p>{cloudError} Ứng dụng sẽ thử lại ở lần thay đổi tiếp theo.</p>
+            </div>
+          </div>
+        )}
 
         <section className="form-section" id="deposit-form">
           <div className="section-heading">
