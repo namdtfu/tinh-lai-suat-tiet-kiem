@@ -34,6 +34,7 @@ test("server-renders the savings application", async () => {
   assert.match(html, /Thêm khoản gửi mới/i);
   assert.match(html, /Tổng vốn gửi/i);
   assert.match(html, /Lãi ròng kỳ hiện tại đến hôm nay/i);
+  assert.match(html, /Lãi phát sinh hôm nay/i);
   assert.match(html, /Tổng lãi dự kiến/i);
   assert.match(html, /Tổng tài sản dự kiến/i);
   assert.match(html, /Ví tiền chưa tái đầu tư/i);
@@ -121,6 +122,11 @@ test("calculates accrued net interest only through today or maturity", async () 
   );
 
   assert.match(page, /function calculateAccruedInterest\(/);
+  assert.match(page, /function calculateInterestToday\(/);
+  assert.match(
+    page,
+    /accruedToday\.interest - accruedYesterday\.interest/,
+  );
   assert.match(page, /date < cycle\.maturityDate/);
   assert.match(page, /Math\.floor\(/);
   assert.match(page, /elapsedDays \/ 365/);
@@ -172,9 +178,18 @@ test("matches the real app accrued profit export on 2026-07-14", () => {
       sum + amount * ((1 + rate / 100 / 365) ** days - 1),
     0,
   );
+  const accruedYesterday = currentCycles.reduce(
+    (sum, [amount, rate, days]) =>
+      sum + Math.floor(amount * (rate / 100) * (Math.max(0, days - 1) / 365)),
+    0,
+  );
+  const interestToday = simpleInterest - accruedYesterday;
 
   assert.equal(simpleInterest, 959_489);
   assert.equal(Math.round(compoundInterest), 968_154);
+  assert.equal(accruedYesterday, 912_168);
+  assert.equal(interestToday, 47_321);
+  assert.equal(Math.round(interestToday * 0.95), 44_955);
 });
 
 test("includes a versioned local backup and restore flow", async () => {

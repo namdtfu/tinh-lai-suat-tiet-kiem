@@ -145,6 +145,12 @@ function addMonthsClamped(startDate: string, months: number) {
   return toLocalIso(target);
 }
 
+function addDays(dateString: string, days: number) {
+  const target = parseLocalDate(dateString);
+  target.setDate(target.getDate() + days);
+  return toLocalIso(target);
+}
+
 function daysBetween(startDate: string, endDate: string) {
   const [startYear, startMonth, startDay] = startDate.split("-").map(Number);
   const [endYear, endMonth, endDay] = endDate.split("-").map(Number);
@@ -242,6 +248,22 @@ function calculateAccruedInterest(cycle: SavingsCycle, date: string) {
     tax,
     interestAfterTax,
     totalAmount: cycle.amount + interestAfterTax,
+  };
+}
+
+function calculateInterestToday(cycle: SavingsCycle, date: string) {
+  const accruedToday = calculateAccruedInterest(cycle, date);
+  const accruedYesterday = calculateAccruedInterest(cycle, addDays(date, -1));
+  const interest = Math.max(
+    0,
+    accruedToday.interest - accruedYesterday.interest,
+  );
+  const tax = interest * INTEREST_DEDUCTION_RATE;
+
+  return {
+    interest,
+    tax,
+    interestAfterTax: interest - tax,
   };
 }
 
@@ -747,6 +769,16 @@ export default function Home() {
       },
       { interest: 0, tax: 0, interestAfterTax: 0 },
     );
+    const todayProfit = savings.reduce(
+      (totals, item) => {
+        const itemProfit = calculateInterestToday(item, today);
+        totals.interest += itemProfit.interest;
+        totals.tax += itemProfit.tax;
+        totals.interestAfterTax += itemProfit.interestAfterTax;
+        return totals;
+      },
+      { interest: 0, tax: 0, interestAfterTax: 0 },
+    );
     return {
       principal,
       interest,
@@ -755,6 +787,9 @@ export default function Home() {
       accruedTax: accrued.tax,
       accruedInterestAfterTax: accrued.interestAfterTax,
       currentAssets: principal + accrued.interestAfterTax + cashBalance,
+      todayInterest: todayProfit.interest,
+      todayTax: todayProfit.tax,
+      todayInterestAfterTax: todayProfit.interestAfterTax,
     };
   }, [cashBalance, savings, today]);
 
@@ -1466,6 +1501,34 @@ export default function Home() {
               </div>
             </article>
           </div>
+          <article className="today-interest-card">
+            <div className="today-interest-heading">
+              <span className="today-interest-icon" aria-hidden="true">↟</span>
+              <div>
+                <span>RIÊNG NGÀY {formatDate(today)}</span>
+                <h3>Lãi phát sinh hôm nay</h3>
+                <p>
+                  Phần tăng thêm so với tổng lãi đã ghi nhận đến hết hôm qua.
+                </p>
+              </div>
+            </div>
+            <div className="today-interest-values">
+              <div className="today-interest-gross">
+                <span>Trước khấu trừ</span>
+                <strong>+{formatCurrency(summary.todayInterest)}</strong>
+              </div>
+              <div>
+                <span>Tạm khấu trừ 5%</span>
+                <strong>−{formatCurrency(summary.todayTax)}</strong>
+              </div>
+              <div>
+                <span>Lãi ròng hôm nay</span>
+                <strong>
+                  +{formatCurrency(summary.todayInterestAfterTax)}
+                </strong>
+              </div>
+            </div>
+          </article>
           <div className="cash-wallet">
             <div className="wallet-overview">
               <span className="wallet-icon" aria-hidden="true">₫</span>
@@ -1530,10 +1593,11 @@ export default function Home() {
           </div>
           <p className="calculation-note">
             Lãi đến hôm nay dùng lãi đơn: gốc × lãi suất năm × số ngày/365 và
-            làm tròn xuống từng khoản để khớp app thực tế. Lãi dự kiến khi đáo
-            hạn vẫn dùng lãi kép theo ngày. Gốc kỳ hiện tại đã bao gồm phần tái
-            đầu tư từ các kỳ trước nên lãi cũ không được cộng lại. Mức khấu trừ
-            5% chỉ mang tính tham khảo.
+            làm tròn xuống từng khoản để khớp app thực tế. Lãi riêng hôm nay là
+            phần chênh lệch giữa tổng lãi hôm nay và tổng đến hết hôm qua. Lãi
+            dự kiến khi đáo hạn vẫn dùng lãi kép theo ngày. Gốc kỳ hiện tại đã
+            bao gồm phần tái đầu tư từ các kỳ trước nên lãi cũ không được cộng
+            lại. Mức khấu trừ 5% chỉ mang tính tham khảo.
           </p>
         </section>
 
@@ -2133,6 +2197,10 @@ export default function Home() {
                             item,
                             today,
                           );
+                          const todayInterest = calculateInterestToday(
+                            item,
+                            today,
+                          );
 
                           return (
                           <div className="savings-item" key={item.id}>
@@ -2199,6 +2267,12 @@ export default function Home() {
                                 </small>
                               </div>
                               <div className="accrued-interest-breakdown">
+                                <span className="today-item-interest">
+                                  <small>Lãi riêng hôm nay</small>
+                                  <strong>
+                                    +{formatCurrency(todayInterest.interest)}
+                                  </strong>
+                                </span>
                                 <span>
                                   <small>Lãi trước khấu trừ</small>
                                   <strong>

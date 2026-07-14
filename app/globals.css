@@ -519,6 +519,101 @@ button {
   color: #147653;
 }
 
+.today-interest-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 18px;
+  padding: 19px 22px;
+  background: linear-gradient(135deg, #fffaf0, #fff3d8);
+  border: 1px solid #eeddb4;
+  border-radius: 15px;
+}
+
+.today-interest-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.today-interest-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #e3a52d, #c77c0a);
+  border-radius: 13px;
+  box-shadow: 0 8px 20px rgba(199, 124, 10, 0.2);
+}
+
+.today-interest-heading > div > span {
+  display: block;
+  color: #a46608;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.today-interest-heading h3 {
+  margin-top: 3px;
+  color: #4c350e;
+  font-size: 0.97rem;
+}
+
+.today-interest-heading p {
+  margin-top: 3px;
+  color: #8a734a;
+  font-size: 0.72rem;
+}
+
+.today-interest-values {
+  display: grid;
+  min-width: min(500px, 52%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.today-interest-values > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.64);
+  border-radius: 10px;
+}
+
+.today-interest-values span,
+.today-interest-values strong {
+  display: block;
+}
+
+.today-interest-values span {
+  color: #866f49;
+  font-size: 0.66rem;
+}
+
+.today-interest-values span small {
+  display: block;
+  margin-top: 2px;
+  color: #a28d6a;
+  font-size: 0.59rem;
+}
+
+.today-interest-values strong {
+  margin-top: 5px;
+  color: #147653;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.today-interest-values > div:nth-child(2) strong {
+  color: var(--red);
+}
+
 .interest-card .card-icon {
   color: var(--mint);
   background: #e5f6f0;
@@ -1841,6 +1936,17 @@ button {
   color: var(--red);
 }
 
+.accrued-interest-breakdown .today-item-interest {
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 0;
+  border-radius: 7px;
+}
+
+.accrued-interest-breakdown .today-item-interest strong {
+  color: #147653;
+}
+
 .savings-details {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -2521,6 +2627,16 @@ footer {
     width: 100%;
   }
 
+  .today-interest-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .today-interest-values {
+    width: 100%;
+    min-width: 0;
+  }
+
   .highlight-detail {
     grid-column: span 2;
   }
@@ -2582,6 +2698,10 @@ footer {
   }
 
   .accrued-interest-breakdown {
+    grid-template-columns: 1fr;
+  }
+
+  .today-interest-values {
     grid-template-columns: 1fr;
   }
 
