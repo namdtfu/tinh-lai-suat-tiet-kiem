@@ -215,7 +215,14 @@ test("includes a monthly interest goal planner", async () => {
   );
 
   assert.match(page, /function calculateInterestGoal\(/);
+  assert.match(page, /function calculateMonthlyNetRate\(/);
   assert.match(page, /Lãi ròng kỳ vọng mỗi tháng/);
+  assert.match(page, /LÃI RÒNG ƯỚC TÍNH HIỆN TẠI\/THÁNG/);
+  assert.match(page, /Dùng làm mục tiêu/);
+  assert.match(
+    page,
+    /currentPortfolio \* calculateMonthlyNetRate\(effectiveGoalRate\)/,
+  );
   assert.match(page, /Góp thêm mỗi tháng/);
   assert.match(page, /Vốn cần có/);
   assert.match(page, /Tổng tiền tự góp đến mục tiêu/);

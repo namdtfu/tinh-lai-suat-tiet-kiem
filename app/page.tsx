@@ -271,6 +271,13 @@ function calculateCycleValueOnDate(cycle: SavingsCycle, date: string) {
   return calculateAccruedInterest(cycle, date).totalAmount;
 }
 
+function calculateMonthlyNetRate(annualInterestRate: number) {
+  if (annualInterestRate <= 0 || annualInterestRate > 100) return 0;
+  const monthlyGrossRate =
+    (1 + annualInterestRate / 100 / 365) ** AVERAGE_DAYS_PER_MONTH - 1;
+  return monthlyGrossRate * (1 - INTEREST_DEDUCTION_RATE);
+}
+
 function calculateInterestGoal(
   targetMonthlyInterest: number,
   annualInterestRate: number,
@@ -286,9 +293,7 @@ function calculateInterestGoal(
     return null;
   }
 
-  const monthlyGrossRate =
-    (1 + annualInterestRate / 100 / 365) ** AVERAGE_DAYS_PER_MONTH - 1;
-  const monthlyNetRate = monthlyGrossRate * (1 - INTEREST_DEDUCTION_RATE);
+  const monthlyNetRate = calculateMonthlyNetRate(annualInterestRate);
   const requiredCapital = targetMonthlyInterest / monthlyNetRate;
   const capitalGap = Math.max(0, requiredCapital - currentCapital);
   const progress = Math.min(100, (currentCapital / requiredCapital) * 100);
@@ -882,6 +887,8 @@ export default function Home() {
     Number(goalInterestRate) > 0
       ? Number(goalInterestRate)
       : suggestedGoalRate;
+  const currentMonthlyInterestEstimate =
+    currentPortfolio * calculateMonthlyNetRate(effectiveGoalRate);
   const goalContribution = parseAmount(goalMonthlyContribution);
   const goalPlan = useMemo(
     () =>
@@ -1854,6 +1861,32 @@ export default function Home() {
                   <p>Nhập số lãi ròng bạn muốn nhận trung bình mỗi tháng.</p>
                 </div>
               </div>
+              <div className="goal-current-income">
+                <div>
+                  <span>LÃI RÒNG ƯỚC TÍNH HIỆN TẠI/THÁNG</span>
+                  <strong>
+                    {formatCurrency(currentMonthlyInterestEstimate)}
+                  </strong>
+                  <small>
+                    {currentPortfolio > 0
+                      ? `Từ ${formatCurrency(currentPortfolio)} với mức ${formatRate(effectiveGoalRate)}%/năm.`
+                      : "Thêm khoản gửi để ứng dụng tính mức lãi hiện tại."}
+                  </small>
+                </div>
+                <button
+                  type="button"
+                  disabled={currentMonthlyInterestEstimate <= 0}
+                  onClick={() =>
+                    setGoalMonthlyInterest(
+                      formatAmountInput(
+                        Math.round(currentMonthlyInterestEstimate),
+                      ),
+                    )
+                  }
+                >
+                  Dùng làm mục tiêu
+                </button>
+              </div>
               <div className="goal-form-grid">
                 <div className="form-group goal-field-wide">
                   <label htmlFor="goalMonthlyInterest">
@@ -1915,6 +1948,8 @@ export default function Home() {
                 </div>
               </div>
               <p className="goal-rate-note">
+                Mục tiêu vẫn do bạn chọn; nút phía trên chỉ giúp điền nhanh mức
+                hiện tại. {" "}
                 Để trống lãi suất sẽ dùng mức bình quân danh mục hiện tại là{
                 " "}
                 <strong>{formatRate(suggestedGoalRate)}%/năm</strong>.

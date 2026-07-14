@@ -1373,6 +1373,72 @@ button {
   font-size: 0.8rem;
 }
 
+.goal-current-income {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 19px;
+  padding: 15px 16px;
+  background: linear-gradient(135deg, #f1fbf7, #e6f7f0);
+  border: 1px solid #c9eadd;
+  border-radius: 13px;
+}
+
+.goal-current-income > div {
+  min-width: 0;
+}
+
+.goal-current-income span,
+.goal-current-income strong,
+.goal-current-income small {
+  display: block;
+}
+
+.goal-current-income span {
+  color: #44806b;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+}
+
+.goal-current-income strong {
+  margin-top: 4px;
+  color: #147653;
+  font-size: 1.12rem;
+  overflow-wrap: anywhere;
+}
+
+.goal-current-income small {
+  margin-top: 3px;
+  color: #68877b;
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.goal-current-income button {
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  color: #147653;
+  background: #fff;
+  border: 1px solid #b9ddcf;
+  border-radius: 9px;
+  font-size: 0.69rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.goal-current-income button:hover:not(:disabled) {
+  color: #fff;
+  background: #17835f;
+  border-color: #17835f;
+}
+
+.goal-current-income button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .goal-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2492,6 +2558,15 @@ footer {
   .cashflow-overview,
   .maturity-alerts {
     grid-template-columns: 1fr;
+  }
+
+  .goal-current-income {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .goal-current-income button {
+    width: 100%;
   }
 
   .cashflow-section-heading,
