@@ -17,6 +17,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Public client configuration is embedded in the static JavaScript bundle.
+    # Repository variables can override these defaults without breaking deploys.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://ravgtydjroekvcmgirfs.supabase.co' }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Iqhb0HpY-c4G3y9xeocMlg_YC_fKiAk' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,9 +37,9 @@ jobs:
 
       - name: Build static site
         run: npm run build:pages
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Verify cloud login is included
+        run: grep -R -q "Mật khẩu được cấp" out/_next/static/chunks
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
