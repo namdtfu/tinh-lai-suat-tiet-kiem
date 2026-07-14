@@ -122,22 +122,59 @@ test("calculates accrued net interest only through today or maturity", async () 
 
   assert.match(page, /function calculateAccruedInterest\(/);
   assert.match(page, /date < cycle\.maturityDate/);
+  assert.match(page, /Math\.floor\(/);
+  assert.match(page, /elapsedDays \/ 365/);
   assert.match(page, /accruedInterest\.elapsedDays/);
   assert.match(page, /LÃI RÒNG KỲ HIỆN TẠI ĐẾN HÔM NAY/);
   assert.doesNotMatch(page, /accruedInterest\.previousCycles/);
   assert.match(page, /Giá trị đến hôm nay/);
 
   const principal = 1_000_000;
-  const dailyRate = 0.06 / 365;
-  const netInterestAfter = (days) =>
-    principal * ((1 + dailyRate) ** days - 1) * 0.95;
+  const grossInterestAfter = (days) =>
+    Math.floor(principal * 0.06 * (days / 365));
+  const netInterestAfter = (days) => grossInterestAfter(days) * 0.95;
 
-  assert.equal(Math.round(netInterestAfter(30)), 4_696);
-  assert.equal(Math.round(netInterestAfter(150)), 23_714);
+  assert.equal(grossInterestAfter(30), 4_931);
+  assert.equal(grossInterestAfter(150), 24_657);
+  assert.equal(Math.round(netInterestAfter(30)), 4_684);
+  assert.equal(Math.round(netInterestAfter(150)), 23_424);
   assert.equal(
     Math.round(netInterestAfter(Math.min(220, 150))),
     Math.round(netInterestAfter(150)),
   );
+});
+
+test("matches the real app accrued profit export on 2026-07-14", () => {
+  const currentCycles = [
+    [17_059_809, 9, 17],
+    [10_000_000, 8.5, 3],
+    [10_000_000, 8.5, 4],
+    [19_927_756, 8, 1],
+    [17_234_686, 8, 2],
+    [36_359_279, 8, 3],
+    [25_414_827, 8, 4],
+    [80_000, 7, 117],
+    [80_000, 7, 120],
+    [10_650_000, 7, 125],
+    [17_015_803, 7.5, 7],
+    [16_959_121, 7.5, 9],
+    [17_066_488, 7.5, 18],
+    [276_968, 7.5, 63],
+    [17_840_492, 8.5, 104],
+  ];
+  const simpleInterest = currentCycles.reduce(
+    (sum, [amount, rate, days]) =>
+      sum + Math.floor(amount * (rate / 100) * (days / 365)),
+    0,
+  );
+  const compoundInterest = currentCycles.reduce(
+    (sum, [amount, rate, days]) =>
+      sum + amount * ((1 + rate / 100 / 365) ** days - 1),
+    0,
+  );
+
+  assert.equal(simpleInterest, 959_489);
+  assert.equal(Math.round(compoundInterest), 968_154);
 });
 
 test("includes a versioned local backup and restore flow", async () => {

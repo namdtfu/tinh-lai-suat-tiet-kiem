@@ -229,8 +229,9 @@ function calculateAccruedInterest(cycle: SavingsCycle, date: string) {
         ? date
         : cycle.maturityDate;
   const elapsedDays = daysBetween(cycle.startDate, calculationDate);
-  const dailyRate = cycle.interestRate / 100 / 365;
-  const interest = cycle.amount * ((1 + dailyRate) ** elapsedDays - 1);
+  const interest = Math.floor(
+    cycle.amount * (cycle.interestRate / 100) * (elapsedDays / 365),
+  );
   const tax = interest * INTEREST_DEDUCTION_RATE;
   const interestAfterTax = interest - tax;
 
@@ -1528,11 +1529,11 @@ export default function Home() {
             )}
           </div>
           <p className="calculation-note">
-            Lãi kép được tính theo ngày: gốc × (1 + lãi suất năm/365)^số ngày.
-            Lãi đến hôm nay chỉ tính cho kỳ hiện tại, từ ngày gửi đến tối đa
-            ngày đáo hạn. Gốc kỳ hiện tại đã bao gồm phần tái đầu tư từ các kỳ
-            trước nên lãi cũ không được cộng lại. Mức khấu trừ 5% chỉ mang tính
-            tham khảo.
+            Lãi đến hôm nay dùng lãi đơn: gốc × lãi suất năm × số ngày/365 và
+            làm tròn xuống từng khoản để khớp app thực tế. Lãi dự kiến khi đáo
+            hạn vẫn dùng lãi kép theo ngày. Gốc kỳ hiện tại đã bao gồm phần tái
+            đầu tư từ các kỳ trước nên lãi cũ không được cộng lại. Mức khấu trừ
+            5% chỉ mang tính tham khảo.
           </p>
         </section>
 
