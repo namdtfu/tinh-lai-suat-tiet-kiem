@@ -33,6 +33,7 @@ test("server-renders the savings application", async () => {
   assert.match(html, /<title>Tính Lãi Suất Tiết Kiệm<\/title>/i);
   assert.match(html, /Thêm khoản gửi mới/i);
   assert.match(html, /Tổng vốn gửi/i);
+  assert.match(html, /Lãi ròng đến hôm nay/i);
   assert.match(html, /Tổng lãi dự kiến/i);
   assert.match(html, /Tổng tài sản dự kiến/i);
   assert.match(html, /Ví tiền chưa tái đầu tư/i);
@@ -111,6 +112,32 @@ test("matches the reference daily-compounding calculation", () => {
   assert.equal(Math.round(interest), 1_003_292);
   assert.equal(Math.round(deduction), 50_165);
   assert.equal(Math.round(finalAmount), 36_359_279);
+});
+
+test("calculates accrued net interest only through today or maturity", async () => {
+  const page = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(page, /function calculateAccruedInterest\(/);
+  assert.match(page, /function calculateItemInterestToDate\(/);
+  assert.match(page, /item\.history \?\? \[\]/);
+  assert.match(page, /date < cycle\.maturityDate/);
+  assert.match(page, /accruedInterest\.currentCycle\.elapsedDays/);
+  assert.match(page, /Giá trị kỳ hiện tại/);
+
+  const principal = 1_000_000;
+  const dailyRate = 0.06 / 365;
+  const netInterestAfter = (days) =>
+    principal * ((1 + dailyRate) ** days - 1) * 0.95;
+
+  assert.equal(Math.round(netInterestAfter(30)), 4_696);
+  assert.equal(Math.round(netInterestAfter(150)), 23_714);
+  assert.equal(
+    Math.round(netInterestAfter(Math.min(220, 150))),
+    Math.round(netInterestAfter(150)),
+  );
 });
 
 test("includes a versioned local backup and restore flow", async () => {
