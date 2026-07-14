@@ -122,6 +122,25 @@ export async function sendMagicLink(email: string, redirectTo: string) {
   await assertOk(response);
 }
 
+export async function signInWithPassword(email: string, password: string) {
+  requireConfiguration();
+  const response = await fetch(
+    `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
+    {
+      method: "POST",
+      headers: requestHeaders(),
+      body: JSON.stringify({ email, password }),
+    },
+  );
+  await assertOk(response);
+  const session = normalizeTokenPayload(
+    (await response.json()) as SupabaseTokenPayload,
+  );
+  if (!session) throw new Error("Phiên đăng nhập không hợp lệ.");
+  persistSession(session);
+  return session;
+}
+
 export async function consumeMagicLinkSession() {
   if (typeof window === "undefined" || !window.location.hash) return null;
   const params = new URLSearchParams(window.location.hash.slice(1));

@@ -139,6 +139,10 @@ button {
   outline: none;
 }
 
+.auth-form input + label {
+  margin-top: 14px;
+}
+
 .auth-form input:focus {
   border-color: var(--violet);
   box-shadow: 0 0 0 3px rgba(111, 75, 216, 0.12);

@@ -224,10 +224,13 @@ test("includes invite-only cloud accounts with per-user database isolation", asy
   ]);
 
   assert.match(page, /Đăng nhập vào dữ liệu của bạn/);
+  assert.match(page, /handlePasswordSubmit/);
+  assert.match(page, /type="password"/);
   assert.match(page, /Đưa dữ liệu này lên tài khoản/);
   assert.match(page, /createCloudAppState\(/);
   assert.match(page, /writeCloudState\(activeSession, state\)/);
   assert.match(client, /create_user: false/);
+  assert.match(client, /grant_type=password/);
   assert.match(client, /grant_type=refresh_token/);
   assert.match(client, /on_conflict/);
   assert.doesNotMatch(client, /service[_-]?role/i);

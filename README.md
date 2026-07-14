@@ -17,17 +17,17 @@ Mở `http://localhost:3000` trong trình duyệt. Dữ liệu được lưu tro
 
 ## Tài khoản và đồng bộ Supabase
 
-Ứng dụng dùng đăng nhập Magic Link theo danh sách mời. Mỗi tài khoản chỉ được
-đọc và ghi dòng dữ liệu của chính mình nhờ Row Level Security.
+Ứng dụng dùng đăng nhập email và mật khẩu với tài khoản được tạo trước. Mỗi tài
+khoản chỉ được đọc và ghi dòng dữ liệu của chính mình nhờ Row Level Security.
 
 1. Tạo một Supabase project.
 2. Mở SQL Editor và chạy toàn bộ tệp `supabase/schema.sql`.
 3. Sao chép `.env.example` thành `.env.local`, sau đó điền Project URL và
    publishable key. Không dùng và không đưa service-role key vào ứng dụng.
-4. Trong Authentication URL Configuration, thêm các Redirect URL:
-   `http://localhost:3000/**` và
-   `https://namdtfu.github.io/tinh-lai-suat-tiet-kiem/**`.
-5. Tạo hoặc mời 5–10 email được phép sử dụng trong Authentication > Users.
+4. Trong Authentication > Users, chọn Add user > Create new user, nhập email
+   và mật khẩu rồi bật Auto Confirm User.
+5. Lặp lại cho 5–10 người được phép sử dụng. Không dùng Invite user nếu dự án
+   chưa cấu hình SMTP riêng.
 
 Khi một tài khoản đăng nhập lần đầu mà thiết bị đang có dữ liệu cục bộ, ứng
 dụng sẽ yêu cầu xác nhận trước khi đưa dữ liệu lên database. Người dùng cũng có

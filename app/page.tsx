@@ -15,7 +15,7 @@ import {
   isCloudConfigured,
   readCloudState,
   restoreCloudSession,
-  sendMagicLink,
+  signInWithPassword,
   signOutCloud,
   writeCloudState,
 } from "@/lib/supabase-rest";
@@ -794,7 +794,9 @@ export default function Home() {
   const [migrationPending, setMigrationPending] = useState(false);
   const [cloudActionBusy, setCloudActionBusy] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
+  const [loginMessageIsError, setLoginMessageIsError] = useState(false);
   const [ready, setReady] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -1507,29 +1509,36 @@ export default function Home() {
     }
   }
 
-  async function handleMagicLinkSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const email = loginEmail.trim().toLowerCase();
     if (!email || !email.includes("@")) {
+      setLoginMessageIsError(true);
       setLoginMessage("Hãy nhập một địa chỉ email hợp lệ.");
+      return;
+    }
+    if (!loginPassword) {
+      setLoginMessageIsError(true);
+      setLoginMessage("Hãy nhập mật khẩu đã được cấp.");
       return;
     }
 
     setCloudActionBusy(true);
     setLoginMessage("");
+    setLoginMessageIsError(false);
     try {
-      await sendMagicLink(
-        email,
-        `${window.location.origin}${window.location.pathname}`,
-      );
-      setLoginMessage(
-        "Nếu email đã được mời, đường dẫn đăng nhập vừa được gửi. Hãy kiểm tra cả thư rác.",
-      );
+      await signInWithPassword(email, loginPassword);
+      window.location.reload();
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Chưa thể đăng nhập.";
+      setLoginMessageIsError(true);
       setLoginMessage(
-        error instanceof Error
-          ? error.message
-          : "Chưa thể gửi đường dẫn đăng nhập.",
+        /invalid login credentials/i.test(message)
+          ? "Email hoặc mật khẩu không đúng. Hãy kiểm tra tài khoản trong Supabase."
+          : /email not confirmed/i.test(message)
+            ? "Email này chưa được xác nhận trong Supabase."
+            : message,
       );
     } finally {
       setCloudActionBusy(false);
@@ -1647,10 +1656,10 @@ export default function Home() {
           <span className="auth-mark" aria-hidden="true">₫</span>
           <h1>Đăng nhập vào dữ liệu của bạn</h1>
           <p>
-            Nhập email đã được mời. Chúng tôi sẽ gửi một đường dẫn đăng nhập,
-            không cần mật khẩu.
+            Nhập email và mật khẩu do chủ ứng dụng cấp. Mỗi tài khoản chỉ truy
+            cập được dữ liệu của chính mình.
           </p>
-          <form className="auth-form" onSubmit={handleMagicLinkSubmit}>
+          <form className="auth-form" onSubmit={handlePasswordSubmit}>
             <label htmlFor="loginEmail">Email</label>
             <input
               id="loginEmail"
@@ -1661,16 +1670,31 @@ export default function Home() {
               placeholder="ban@example.com"
               required
             />
+            <label htmlFor="loginPassword">Mật khẩu</label>
+            <input
+              id="loginPassword"
+              type="password"
+              autoComplete="current-password"
+              value={loginPassword}
+              onChange={(event) => setLoginPassword(event.target.value)}
+              placeholder="Mật khẩu được cấp"
+              required
+            />
             <button type="submit" disabled={cloudActionBusy}>
-              {cloudActionBusy ? "Đang gửi…" : "Gửi đường dẫn đăng nhập"}
+              {cloudActionBusy ? "Đang đăng nhập…" : "Đăng nhập"}
             </button>
           </form>
           {loginMessage && (
-            <div className="auth-message" role="status">{loginMessage}</div>
+            <div
+              className={`auth-message${loginMessageIsError ? " auth-message-error" : ""}`}
+              role={loginMessageIsError ? "alert" : "status"}
+            >
+              {loginMessage}
+            </div>
           )}
           <small>
-            Tài khoản được giới hạn theo danh sách mời. Dữ liệu của mỗi người
-            được tách riêng tại database.
+            Tài khoản được tạo trước trong Supabase Authentication. Ứng dụng
+            không cho phép tự đăng ký.
           </small>
         </section>
       </main>
