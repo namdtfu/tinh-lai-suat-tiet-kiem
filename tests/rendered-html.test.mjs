@@ -33,7 +33,7 @@ test("server-renders the savings application", async () => {
   assert.match(html, /<title>Tính Lãi Suất Tiết Kiệm<\/title>/i);
   assert.match(html, /Thêm khoản gửi mới/i);
   assert.match(html, /Tổng vốn gửi/i);
-  assert.match(html, /Lãi ròng đến hôm nay/i);
+  assert.match(html, /Lãi ròng kỳ hiện tại đến hôm nay/i);
   assert.match(html, /Tổng lãi dự kiến/i);
   assert.match(html, /Tổng tài sản dự kiến/i);
   assert.match(html, /Ví tiền chưa tái đầu tư/i);
@@ -121,11 +121,11 @@ test("calculates accrued net interest only through today or maturity", async () 
   );
 
   assert.match(page, /function calculateAccruedInterest\(/);
-  assert.match(page, /function calculateItemInterestToDate\(/);
-  assert.match(page, /item\.history \?\? \[\]/);
   assert.match(page, /date < cycle\.maturityDate/);
-  assert.match(page, /accruedInterest\.currentCycle\.elapsedDays/);
-  assert.match(page, /Giá trị kỳ hiện tại/);
+  assert.match(page, /accruedInterest\.elapsedDays/);
+  assert.match(page, /LÃI RÒNG KỲ HIỆN TẠI ĐẾN HÔM NAY/);
+  assert.doesNotMatch(page, /accruedInterest\.previousCycles/);
+  assert.match(page, /Giá trị đến hôm nay/);
 
   const principal = 1_000_000;
   const dailyRate = 0.06 / 365;

@@ -248,27 +248,6 @@ function calculateCycleValueOnDate(cycle: SavingsCycle, date: string) {
   return calculateAccruedInterest(cycle, date).totalAmount;
 }
 
-function calculateItemInterestToDate(item: SavingsItem, date: string) {
-  const currentCycle = calculateAccruedInterest(item, date);
-  const previousCycles = (item.history ?? []).reduce(
-    (totals, cycle) => ({
-      interest: totals.interest + cycle.interest,
-      tax: totals.tax + cycle.tax,
-      interestAfterTax: totals.interestAfterTax + cycle.interestAfterTax,
-    }),
-    { interest: 0, tax: 0, interestAfterTax: 0 },
-  );
-
-  return {
-    currentCycle,
-    previousCycles,
-    interest: previousCycles.interest + currentCycle.interest,
-    tax: previousCycles.tax + currentCycle.tax,
-    interestAfterTax:
-      previousCycles.interestAfterTax + currentCycle.interestAfterTax,
-  };
-}
-
 function calculateInterestGoal(
   targetMonthlyInterest: number,
   annualInterestRate: number,
@@ -759,20 +738,13 @@ export default function Home() {
     );
     const accrued = savings.reduce(
       (totals, item) => {
-        const itemAccrued = calculateItemInterestToDate(item, today);
+        const itemAccrued = calculateAccruedInterest(item, today);
         totals.interest += itemAccrued.interest;
         totals.tax += itemAccrued.tax;
         totals.interestAfterTax += itemAccrued.interestAfterTax;
-        totals.currentCycleInterestAfterTax +=
-          itemAccrued.currentCycle.interestAfterTax;
         return totals;
       },
-      {
-        interest: 0,
-        tax: 0,
-        interestAfterTax: 0,
-        currentCycleInterestAfterTax: 0,
-      },
+      { interest: 0, tax: 0, interestAfterTax: 0 },
     );
     return {
       principal,
@@ -781,8 +753,7 @@ export default function Home() {
       accruedInterest: accrued.interest,
       accruedTax: accrued.tax,
       accruedInterestAfterTax: accrued.interestAfterTax,
-      currentAssets:
-        principal + accrued.currentCycleInterestAfterTax + cashBalance,
+      currentAssets: principal + accrued.interestAfterTax + cashBalance,
     };
   }, [cashBalance, savings, today]);
 
@@ -1464,7 +1435,7 @@ export default function Home() {
             <article className="summary-card accrued-card">
               <span className="card-icon" aria-hidden="true">≈</span>
               <div>
-                <h3>Tổng lãi ròng đến hôm nay</h3>
+                <h3>Lãi ròng kỳ hiện tại đến hôm nay</h3>
                 <p>+{formatCurrency(summary.accruedInterestAfterTax)}</p>
                 <small>
                   Trước khấu trừ: {formatCurrency(summary.accruedInterest)}
@@ -1472,7 +1443,6 @@ export default function Home() {
                 <small>
                   Khấu trừ 5%: −{formatCurrency(summary.accruedTax)}
                 </small>
-                <small>Bao gồm các kỳ tái đầu tư trước</small>
               </div>
             </article>
             <article className="summary-card interest-card">
@@ -1559,8 +1529,9 @@ export default function Home() {
           </div>
           <p className="calculation-note">
             Lãi kép được tính theo ngày: gốc × (1 + lãi suất năm/365)^số ngày.
-            Lãi đến hôm nay được tính từ ngày gửi và dừng tại ngày đáo hạn. Mức
-            khấu trừ 5% được giữ theo công thức bạn cung cấp và chỉ mang tính
+            Lãi đến hôm nay chỉ tính cho kỳ hiện tại, từ ngày gửi đến tối đa
+            ngày đáo hạn. Gốc kỳ hiện tại đã bao gồm phần tái đầu tư từ các kỳ
+            trước nên lãi cũ không được cộng lại. Mức khấu trừ 5% chỉ mang tính
             tham khảo.
           </p>
         </section>
@@ -2105,7 +2076,7 @@ export default function Home() {
                 const groupAccruedInterest = items.reduce(
                   (sum, item) =>
                     sum +
-                    calculateItemInterestToDate(item, today).interestAfterTax,
+                    calculateAccruedInterest(item, today).interestAfterTax,
                   0,
                 );
 
@@ -2121,7 +2092,7 @@ export default function Home() {
                       </div>
                       <div className="group-summary">
                         <div>
-                          <span>Lãi ròng đến hôm nay</span>
+                          <span>Lãi kỳ hiện tại đến hôm nay</span>
                           <strong>
                             +{formatCurrency(groupAccruedInterest)}
                           </strong>
@@ -2157,7 +2128,7 @@ export default function Home() {
                             item.startDate,
                             item.maturityDate,
                           );
-                          const accruedInterest = calculateItemInterestToDate(
+                          const accruedInterest = calculateAccruedInterest(
                             item,
                             today,
                           );
@@ -2215,7 +2186,7 @@ export default function Home() {
                             </div>
                             <div className="accrued-interest-strip">
                               <div className="accrued-interest-main">
-                                <span>TỔNG LÃI RÒNG ĐẾN HÔM NAY</span>
+                                <span>LÃI RÒNG KỲ HIỆN TẠI ĐẾN HÔM NAY</span>
                                 <strong>
                                   +
                                   {formatCurrency(
@@ -2223,26 +2194,10 @@ export default function Home() {
                                   )}
                                 </strong>
                                 <small>
-                                  Kỳ hiện tại +
-                                  {formatCurrency(
-                                    accruedInterest.currentCycle
-                                      .interestAfterTax,
-                                  )}{" "}
-                                  sau {accruedInterest.currentCycle.elapsedDays}{" "}
-                                  ngày
+                                  Sau {accruedInterest.elapsedDays} ngày sinh lãi
                                 </small>
                               </div>
                               <div className="accrued-interest-breakdown">
-                                <span>
-                                  <small>Các kỳ trước</small>
-                                  <strong>
-                                    +
-                                    {formatCurrency(
-                                      accruedInterest.previousCycles
-                                        .interestAfterTax,
-                                    )}
-                                  </strong>
-                                </span>
                                 <span>
                                   <small>Lãi trước khấu trừ</small>
                                   <strong>
@@ -2256,11 +2211,9 @@ export default function Home() {
                                   </strong>
                                 </span>
                                 <span>
-                                  <small>Giá trị kỳ hiện tại</small>
+                                  <small>Giá trị đến hôm nay</small>
                                   <strong>
-                                    {formatCurrency(
-                                      accruedInterest.currentCycle.totalAmount,
-                                    )}
+                                    {formatCurrency(accruedInterest.totalAmount)}
                                   </strong>
                                 </span>
                               </div>
