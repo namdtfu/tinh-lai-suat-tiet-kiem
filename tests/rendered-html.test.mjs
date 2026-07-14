@@ -23,7 +23,7 @@ async function render() {
   );
 }
 
-test("server-renders the savings application", async () => {
+test("server-renders the correct application entry screen", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -31,15 +31,22 @@ test("server-renders the savings application", async () => {
   const html = await response.text();
   assert.match(html, /<html lang="vi">/i);
   assert.match(html, /<title>Tính Lãi Suất Tiết Kiệm<\/title>/i);
-  assert.match(html, /Thêm khoản gửi mới/i);
-  assert.match(html, /Tổng vốn gửi/i);
-  assert.match(html, /Lãi ròng kỳ hiện tại đến hôm nay/i);
-  assert.match(html, /Lãi phát sinh hôm nay/i);
-  assert.match(html, /Tổng lãi dự kiến/i);
-  assert.match(html, /Tổng tài sản dự kiến/i);
-  assert.match(html, /Ví tiền chưa tái đầu tư/i);
-  assert.match(html, /Tiền sẽ về khi nào/i);
-  assert.match(html, /Danh sách/i);
+  const cloudEntryRendered = /Đang mở sổ tiết kiệm của bạn/i.test(html);
+
+  if (cloudEntryRendered) {
+    assert.match(html, /Đang mở sổ tiết kiệm của bạn/i);
+    assert.match(html, /kiểm tra phiên đăng nhập và dữ liệu đã lưu/i);
+  } else {
+    assert.match(html, /Thêm khoản gửi mới/i);
+    assert.match(html, /Tổng vốn gửi/i);
+    assert.match(html, /Lãi ròng kỳ hiện tại đến hôm nay/i);
+    assert.match(html, /Lãi phát sinh hôm nay/i);
+    assert.match(html, /Tổng lãi dự kiến/i);
+    assert.match(html, /Tổng tài sản dự kiến/i);
+    assert.match(html, /Ví tiền chưa tái đầu tư/i);
+    assert.match(html, /Tiền sẽ về khi nào/i);
+    assert.match(html, /Danh sách/i);
+  }
   assert.doesNotMatch(html, /codex-preview|Codex is working|Starter Project/i);
 });
 
