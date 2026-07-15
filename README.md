@@ -6,7 +6,8 @@ trong cùng một tài khoản:
 - **Tiết kiệm:** quản lý khoản gửi, tính lãi dự kiến, theo dõi ngày đáo hạn và
   lịch sử các kỳ tái đầu tư.
 - **Thu chi:** quản lý tài khoản KRW/VND, khoản thu, khoản chi, chuyển đổi tiền
-  tệ, ngân sách theo tháng và báo cáo theo nhóm cha–con tùy chỉnh.
+  tệ, ngân sách theo tháng, xu hướng dòng tiền theo ngày và báo cáo tháng chi
+  tiết theo nhóm cha–con tùy chỉnh.
 
 Mỗi tài khoản Thu chi có một đơn vị tiền cố định. Khi chuyển giữa KRW và VND,
 giao dịch lưu riêng số tiền gửi và số tiền thực nhận để số dư hai bên luôn đúng;

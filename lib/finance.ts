@@ -59,6 +59,21 @@ export type FinanceMonthSummary = {
   transactionCount: number;
 };
 
+export type FinanceCategoryBreakdownItem = {
+  amount: number;
+  category: FinanceCategory;
+  percentage: number;
+  transactionCount: number;
+};
+
+export type FinanceDailyTrendItem = {
+  cumulativeExpense: number;
+  cumulativeIncome: number;
+  day: number;
+  expense: number;
+  income: number;
+};
+
 export const FINANCE_CURRENCIES: Array<{
   code: FinanceCurrency;
   label: string;
@@ -548,6 +563,107 @@ export function getExpenseByCategory(
   return totals;
 }
 
+export function getFinanceCategoryBreakdown(
+  state: FinanceState,
+  monthKey: string,
+  currency: FinanceCurrency,
+  kind: FinanceCategoryKind,
+) {
+  const accountMap = new Map(state.accounts.map((account) => [account.id, account]));
+  const totals = new Map<string, { amount: number; transactionCount: number }>();
+
+  state.transactions.forEach((transaction) => {
+    if (
+      transaction.type !== kind ||
+      !transaction.categoryId ||
+      monthKeyFromIso(transaction.date) !== monthKey ||
+      accountMap.get(transaction.accountId)?.currency !== currency
+    ) {
+      return;
+    }
+    const root = findRootCategory(state.categories, transaction.categoryId);
+    if (!root) return;
+    const current = totals.get(root.id) ?? { amount: 0, transactionCount: 0 };
+    current.amount += transaction.amount;
+    current.transactionCount += 1;
+    totals.set(root.id, current);
+  });
+
+  const total = [...totals.values()].reduce(
+    (sum, item) => sum + item.amount,
+    0,
+  );
+  return [...totals.entries()]
+    .flatMap(([categoryId, item]) => {
+      const category = state.categories.find(
+        (candidate) => candidate.id === categoryId,
+      );
+      return category
+        ? [{
+            ...item,
+            category,
+            percentage: total ? (item.amount / total) * 100 : 0,
+          }]
+        : [];
+    })
+    .sort((left, right) => right.amount - left.amount);
+}
+
+export function getFinanceMonthDailyTrend(
+  state: FinanceState,
+  monthKey: string,
+  currency: FinanceCurrency,
+) {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  ) {
+    return [];
+  }
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const trend: FinanceDailyTrendItem[] = Array.from(
+    { length: daysInMonth },
+    (_, index) => ({
+      cumulativeExpense: 0,
+      cumulativeIncome: 0,
+      day: index + 1,
+      expense: 0,
+      income: 0,
+    }),
+  );
+  const accountMap = new Map(state.accounts.map((account) => [account.id, account]));
+
+  state.transactions.forEach((transaction) => {
+    if (
+      monthKeyFromIso(transaction.date) !== monthKey ||
+      accountMap.get(transaction.accountId)?.currency !== currency ||
+      (transaction.type !== "income" && transaction.type !== "expense")
+    ) {
+      return;
+    }
+    const dayIndex = Number(transaction.date.slice(8, 10)) - 1;
+    const item = trend[dayIndex];
+    if (!item) return;
+    item[transaction.type] += transaction.amount;
+  });
+
+  let cumulativeIncome = 0;
+  let cumulativeExpense = 0;
+  return trend.map((item) => {
+    cumulativeIncome += item.income;
+    cumulativeExpense += item.expense;
+    return {
+      ...item,
+      cumulativeExpense,
+      cumulativeIncome,
+    };
+  });
+}
+
 export function getCategorySpent(
   state: FinanceState,
   categoryId: string,
@@ -573,6 +689,69 @@ export function getCategorySpent(
     }
     return total + transaction.amount;
   }, 0);
+}
+
+export function saveFinanceBudget(
+  budgets: FinanceBudget[],
+  nextBudget: FinanceBudget,
+) {
+  const currentIndex = budgets.findIndex(
+    (budget) => budget.id === nextBudget.id,
+  );
+  const withoutCurrentOrDuplicate = budgets.filter(
+    (budget) =>
+      budget.id !== nextBudget.id &&
+      (budget.categoryId !== nextBudget.categoryId ||
+        budget.currency !== nextBudget.currency),
+  );
+  const insertionIndex =
+    currentIndex < 0
+      ? withoutCurrentOrDuplicate.length
+      : Math.min(currentIndex, withoutCurrentOrDuplicate.length);
+  const nextBudgets = [...withoutCurrentOrDuplicate];
+  nextBudgets.splice(insertionIndex, 0, nextBudget);
+  return nextBudgets;
+}
+
+export function deleteFinanceBudget(
+  budgets: FinanceBudget[],
+  budgetId: string,
+) {
+  return budgets.filter((budget) => budget.id !== budgetId);
+}
+
+export function saveFinanceAccount(
+  accounts: FinanceAccount[],
+  nextAccount: FinanceAccount,
+) {
+  const currentIndex = accounts.findIndex(
+    (account) => account.id === nextAccount.id,
+  );
+  if (currentIndex < 0) return [...accounts, nextAccount];
+  return accounts.map((account, index) =>
+    index === currentIndex ? nextAccount : account,
+  );
+}
+
+export function deleteFinanceAccount(
+  state: FinanceState,
+  accountId: string,
+) {
+  if (
+    state.accounts.length <= 1 ||
+    !state.accounts.some((account) => account.id === accountId)
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    accounts: state.accounts.filter((account) => account.id !== accountId),
+    transactions: state.transactions.filter(
+      (transaction) =>
+        transaction.accountId !== accountId &&
+        transaction.toAccountId !== accountId,
+    ),
+  };
 }
 
 export function hasMeaningfulFinanceData(state: FinanceState) {

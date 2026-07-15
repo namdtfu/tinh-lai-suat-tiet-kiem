@@ -228,7 +228,12 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Tổng quan/);
   assert.match(manager, /Giao dịch/);
   assert.match(manager, /Ngân sách/);
+  assert.match(manager, /Sửa ngân sách/);
+  assert.match(manager, /Xóa ngân sách/);
+  assert.match(manager, /Lưu thay đổi/);
   assert.match(manager, /Tài khoản/);
+  assert.match(manager, /Sửa tài khoản/);
+  assert.match(manager, /Xóa tài khoản/);
   assert.match(manager, /Thêm giao dịch/);
   assert.match(manager, /Khoản thu/);
   assert.match(manager, /Khoản chi/);
@@ -243,6 +248,13 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /function editTransaction/);
   assert.match(manager, /hoàn lại toàn bộ tác động của giao dịch cũ/);
   assert.match(manager, /Lưu thay đổi/);
+  assert.match(manager, /BÁO CÁO THÁNG/);
+  assert.match(manager, /Xem báo cáo chi tiết/);
+  assert.match(manager, /Chi tiết/);
+  assert.match(manager, /formatMonth\(selectedMonth\)/);
+  assert.match(manager, /Dòng tiền lũy kế theo ngày/);
+  assert.match(manager, /Báo cáo theo nhóm/);
+  assert.match(manager, /Trung bình chi 3 tháng trước/);
   assert.match(finance, /function calculateAccountBalance/);
   assert.match(finance, /function saveFinanceTransaction/);
   assert.match(finance, /function formatFinanceAmountInput/);
@@ -254,6 +266,12 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(finance, /function repairCategoryTree/);
   assert.match(finance, /parentId\?: string/);
   assert.match(finance, /function summarizeFinanceMonth/);
+  assert.match(finance, /function getFinanceCategoryBreakdown/);
+  assert.match(finance, /function getFinanceMonthDailyTrend/);
+  assert.match(finance, /function saveFinanceBudget/);
+  assert.match(finance, /function deleteFinanceBudget/);
+  assert.match(finance, /function saveFinanceAccount/);
+  assert.match(finance, /function deleteFinanceAccount/);
   assert.match(finance, /function normalizeFinanceState/);
 });
 

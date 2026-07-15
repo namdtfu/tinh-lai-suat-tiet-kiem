@@ -3,9 +3,15 @@ import test from "node:test";
 
 import {
   calculateAccountBalance,
+  deleteFinanceAccount,
+  deleteFinanceBudget,
   formatFinanceAmountInput,
+  getFinanceCategoryBreakdown,
+  getFinanceMonthDailyTrend,
   normalizeFinanceState,
   parseFinanceAmountInput,
+  saveFinanceAccount,
+  saveFinanceBudget,
   saveFinanceTransaction,
   summarizeFinanceMonth,
 } from "../lib/finance.ts";
@@ -19,6 +25,107 @@ test("amount inputs add Vietnamese thousand separators while keeping numeric val
   assert.equal(formatFinanceAmountInput(""), "");
   assert.equal(parseFinanceAmountInput("1.000.000"), 1_000_000);
   assert.equal(parseFinanceAmountInput("₩ 1.000.000"), 1_000_000);
+});
+
+test("editing a budget replaces its old values without creating a duplicate", () => {
+  const budgets = [
+    { id: "food-krw", categoryId: "food", currency: "KRW", monthlyLimit: 300_000 },
+    { id: "travel-krw", categoryId: "travel", currency: "KRW", monthlyLimit: 500_000 },
+  ];
+  const edited = {
+    ...budgets[0],
+    categoryId: "health",
+    currency: "VND",
+    monthlyLimit: 2_000_000,
+  };
+
+  assert.deepEqual(saveFinanceBudget(budgets, edited), [edited, budgets[1]]);
+});
+
+test("editing a budget into an existing category and currency keeps only the edited budget", () => {
+  const budgets = [
+    { id: "food-krw", categoryId: "food", currency: "KRW", monthlyLimit: 300_000 },
+    { id: "travel-krw", categoryId: "travel", currency: "KRW", monthlyLimit: 500_000 },
+  ];
+  const edited = {
+    ...budgets[0],
+    categoryId: "travel",
+    monthlyLimit: 750_000,
+  };
+
+  assert.deepEqual(saveFinanceBudget(budgets, edited), [edited]);
+});
+
+test("deleting a budget leaves every other budget untouched", () => {
+  const budgets = [
+    { id: "food-krw", categoryId: "food", currency: "KRW", monthlyLimit: 300_000 },
+    { id: "travel-vnd", categoryId: "travel", currency: "VND", monthlyLimit: 5_000_000 },
+  ];
+
+  assert.deepEqual(deleteFinanceBudget(budgets, "food-krw"), [budgets[1]]);
+  assert.deepEqual(deleteFinanceBudget(budgets, "missing"), budgets);
+});
+
+test("editing an account changes its opening balance while keeping transactions", () => {
+  const expense = transaction({ amount: 1_500 });
+  const editedAccount = {
+    ...krwCash,
+    name: "Ví sinh hoạt",
+    openingBalance: 20_000,
+  };
+  const accounts = saveFinanceAccount([krwCash, krwBank], editedAccount);
+
+  assert.deepEqual(accounts, [editedAccount, krwBank]);
+  assert.equal(calculateAccountBalance(editedAccount, [expense]), 18_500);
+});
+
+test("deleting an account removes every linked transaction and restores counterparties", () => {
+  const unrelatedExpense = transaction({ id: "unrelated", amount: 500 });
+  const state = {
+    accounts: [krwCash, krwBank, vndBank],
+    categories: [],
+    budgets: [
+      { id: "food-krw", categoryId: "food", currency: "KRW", monthlyLimit: 300_000 },
+    ],
+    transactions: [
+      unrelatedExpense,
+      transaction({ id: "bank-expense", accountId: krwBank.id }),
+      transaction({
+        id: "bank-to-vnd",
+        type: "transfer",
+        accountId: krwBank.id,
+        toAccountId: vndBank.id,
+        toAmount: 18_000,
+        categoryId: undefined,
+      }),
+      transaction({
+        id: "cash-to-bank",
+        type: "transfer",
+        accountId: krwCash.id,
+        toAccountId: krwBank.id,
+        categoryId: undefined,
+      }),
+    ],
+  };
+
+  const nextState = deleteFinanceAccount(state, krwBank.id);
+  assert.deepEqual(nextState.accounts, [krwCash, vndBank]);
+  assert.deepEqual(nextState.transactions, [unrelatedExpense]);
+  assert.deepEqual(nextState.budgets, state.budgets);
+  assert.equal(calculateAccountBalance(krwCash, nextState.transactions), 9_500);
+  assert.equal(calculateAccountBalance(vndBank, nextState.transactions), 100_000);
+});
+
+test("the final finance account cannot be deleted", () => {
+  const state = {
+    accounts: [krwCash],
+    categories: [],
+    budgets: [],
+    transactions: [transaction()],
+  };
+
+  assert.equal(deleteFinanceAccount(state, krwCash.id), state);
+  assert.equal(deleteFinanceAccount(state, "missing"), state);
 });
 
 const krwCash = {
@@ -246,6 +353,83 @@ test("monthly reports separate currencies and never count transfers as income", 
     { income: vnd.income, expense: vnd.expense, count: vnd.transactionCount },
     { income: 0, expense: 20_000, count: 2 },
   );
+});
+
+test("monthly category reports roll child groups into their parent", () => {
+  const categories = [
+    { id: "food", name: "Ăn uống", kind: "expense", color: "#f28f61", icon: "🍜" },
+    { id: "cafe", parentId: "food", name: "Cafe", kind: "expense", color: "#f28f61", icon: "☕" },
+    { id: "salary", name: "Lương", kind: "income", color: "#27a77b", icon: "💵" },
+  ];
+  const state = {
+    accounts: [krwCash, vndBank],
+    categories,
+    budgets: [],
+    transactions: [
+      transaction({ id: "coffee", amount: 3_000, categoryId: "cafe" }),
+      transaction({ id: "meal", amount: 1_000, categoryId: "food" }),
+      transaction({ id: "vnd-meal", amount: 20_000, accountId: vndBank.id, categoryId: "food" }),
+      transaction({ id: "salary", type: "income", amount: 8_000, categoryId: "salary" }),
+    ],
+  };
+
+  const expenses = getFinanceCategoryBreakdown(
+    state,
+    "2026-07",
+    "KRW",
+    "expense",
+  );
+  const income = getFinanceCategoryBreakdown(
+    state,
+    "2026-07",
+    "KRW",
+    "income",
+  );
+
+  assert.equal(expenses.length, 1);
+  assert.equal(expenses[0].category.id, "food");
+  assert.equal(expenses[0].amount, 4_000);
+  assert.equal(expenses[0].transactionCount, 2);
+  assert.equal(expenses[0].percentage, 100);
+  assert.equal(income[0].amount, 8_000);
+});
+
+test("monthly daily trend is cumulative and excludes transfers and other currencies", () => {
+  const state = {
+    accounts: [krwCash, krwBank, vndBank],
+    categories: [],
+    budgets: [],
+    transactions: [
+      transaction({ id: "income-day-1", type: "income", amount: 5_000, date: "2026-07-01" }),
+      transaction({ id: "expense-day-2", amount: 2_000, date: "2026-07-02" }),
+      transaction({
+        id: "transfer-day-3",
+        type: "transfer",
+        amount: 1_000,
+        date: "2026-07-03",
+        categoryId: undefined,
+        toAccountId: krwBank.id,
+      }),
+      transaction({ id: "vnd-day-2", amount: 20_000, date: "2026-07-02", accountId: vndBank.id }),
+    ],
+  };
+
+  const trend = getFinanceMonthDailyTrend(state, "2026-07", "KRW");
+
+  assert.equal(trend.length, 31);
+  assert.deepEqual(
+    trend.slice(0, 3).map((item) => [
+      item.day,
+      item.cumulativeIncome,
+      item.cumulativeExpense,
+    ]),
+    [
+      [1, 5_000, 0],
+      [2, 5_000, 2_000],
+      [3, 5_000, 2_000],
+    ],
+  );
+  assert.deepEqual(getFinanceMonthDailyTrend(state, "invalid", "KRW"), []);
 });
 
 test("new transactions are prepended while edits keep the same list position", () => {

@@ -4,19 +4,26 @@ import { FormEvent, useMemo, useState } from "react";
 import {
   calculateAccountBalance,
   calculateTotalsByCurrency,
+  deleteFinanceAccount,
+  deleteFinanceBudget,
   FINANCE_CURRENCIES,
   FinanceAccountType,
+  FinanceCategoryBreakdownItem,
   FinanceCategory,
   FinanceCategoryKind,
   FinanceCurrency,
+  FinanceDailyTrendItem,
   FinanceState,
   FinanceTransactionType,
   formatFinanceAmountInput,
   getCategoryPath,
   getCategorySpent,
-  getExpenseByCategory,
+  getFinanceCategoryBreakdown,
+  getFinanceMonthDailyTrend,
   monthKeyFromIso,
   parseFinanceAmountInput,
+  saveFinanceAccount,
+  saveFinanceBudget,
   saveFinanceTransaction,
   shiftMonthKey,
   summarizeFinanceMonth,
@@ -82,6 +89,142 @@ function formatShortDate(date: string) {
   return shortDateFormatter.format(new Date(`${date}T00:00:00`));
 }
 
+function getDonutGradient(items: FinanceCategoryBreakdownItem[]) {
+  if (!items.length) return "#ece8f1";
+  const visibleItems = items.slice(0, 4);
+  let offset = 0;
+  const stops = visibleItems.map((item) => {
+    const start = offset;
+    offset = Math.min(100, offset + item.percentage);
+    return `${item.category.color} ${start}% ${offset}%`;
+  });
+  if (offset < 100) stops.push(`#d9d3e1 ${offset}% 100%`);
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
+function CategoryBreakdownChart({
+  currency,
+  emptyLabel,
+  items,
+  title,
+  total,
+}: {
+  currency: FinanceCurrency;
+  emptyLabel: string;
+  items: FinanceCategoryBreakdownItem[];
+  title: string;
+  total: number;
+}) {
+  return (
+    <section className={styles.breakdownCard}>
+      <div className={styles.breakdownHeading}>
+        <span>{title}</span>
+        <strong>{formatMoney(total, currency)}</strong>
+      </div>
+      {items.length ? (
+        <>
+          <div className={styles.donutRow}>
+            <div
+              className={styles.donut}
+              style={{ background: getDonutGradient(items) }}
+              role="img"
+              aria-label={`Phân bổ ${title.toLowerCase()} theo nhóm`}
+            >
+              <span><b>{items.length}</b> nhóm</span>
+            </div>
+            <div className={styles.donutLegend}>
+              {items.slice(0, 4).map((item) => (
+                <div key={item.category.id}>
+                  <i style={{ background: item.category.color }} />
+                  <span>{item.category.icon} {item.category.name}</span>
+                  <b>{Math.round(item.percentage)}%</b>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={styles.breakdownList}>
+            {items.map((item) => (
+              <div key={item.category.id}>
+                <span
+                  className={styles.roundIcon}
+                  style={{
+                    background: `${item.category.color}20`,
+                    color: item.category.color,
+                  }}
+                >
+                  {item.category.icon}
+                </span>
+                <span>
+                  <strong>{item.category.name}</strong>
+                  <small>{item.transactionCount} giao dịch</small>
+                </span>
+                <b>{formatMoney(item.amount, currency)}</b>
+                <em>{Math.round(item.percentage)}%</em>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className={styles.breakdownEmpty}>{emptyLabel}</div>
+      )}
+    </section>
+  );
+}
+
+function FinanceTrendChart({
+  compact = false,
+  currency,
+  items,
+}: {
+  compact?: boolean;
+  currency: FinanceCurrency;
+  items: FinanceDailyTrendItem[];
+}) {
+  const maximum = Math.max(
+    1,
+    ...items.flatMap((item) => [
+      item.cumulativeIncome,
+      item.cumulativeExpense,
+    ]),
+  );
+  return (
+    <div
+      className={`${styles.trendChart} ${compact ? styles.compactTrend : ""}`}
+      role="img"
+      aria-label="Xu hướng thu chi lũy kế theo ngày"
+    >
+      <div
+        className={styles.trendColumns}
+        style={{
+          gridTemplateColumns: `repeat(${Math.max(1, items.length)}, minmax(3px, 1fr))`,
+        }}
+      >
+        {items.map((item) => (
+          <span
+            key={item.day}
+            className={styles.trendColumn}
+            title={`Ngày ${item.day}: thu ${formatMoney(item.cumulativeIncome, currency)}, chi ${formatMoney(item.cumulativeExpense, currency)}`}
+          >
+            <i
+              className={styles.incomeTrend}
+              style={{ height: `${Math.max(2, (item.cumulativeIncome / maximum) * 100)}%` }}
+            />
+            <i
+              className={styles.expenseTrend}
+              style={{ height: `${Math.max(2, (item.cumulativeExpense / maximum) * 100)}%` }}
+            />
+          </span>
+        ))}
+      </div>
+      <div className={styles.trendAxis}>
+        <span>01</span>
+        <span>{String(Math.ceil(items.length / 2)).padStart(2, "0")}</span>
+        <span>{String(items.length).padStart(2, "0")}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function FinanceManager({ state, onChange }: FinanceManagerProps) {
   const [activeTab, setActiveTab] = useState<FinanceTab>("overview");
   const [selectedMonth, setSelectedMonth] = useState(monthKeyFromIso(todayIso()));
@@ -93,7 +236,9 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState("");
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const [editingBudgetId, setEditingBudgetId] = useState("");
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [transactionType, setTransactionType] =
     useState<FinanceTransactionType>("expense");
@@ -125,6 +270,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
   const [categoryIcon, setCategoryIcon] = useState("•");
   const [categoryColor, setCategoryColor] = useState("#6f4bd8");
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
+  const [monthlyReportOpen, setMonthlyReportOpen] = useState(false);
 
   const summary = useMemo(
     () => summarizeFinanceMonth(state, selectedMonth, reportingCurrency),
@@ -142,10 +288,56 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
       })),
     [state.accounts, state.transactions],
   );
-  const expenseByCategory = useMemo(
-    () => getExpenseByCategory(state, selectedMonth, reportingCurrency),
+  const incomeBreakdown = useMemo(
+    () =>
+      getFinanceCategoryBreakdown(
+        state,
+        selectedMonth,
+        reportingCurrency,
+        "income",
+      ),
     [reportingCurrency, selectedMonth, state],
   );
+  const expenseBreakdown = useMemo(
+    () =>
+      getFinanceCategoryBreakdown(
+        state,
+        selectedMonth,
+        reportingCurrency,
+        "expense",
+      ),
+    [reportingCurrency, selectedMonth, state],
+  );
+  const dailyTrend = useMemo(
+    () => getFinanceMonthDailyTrend(state, selectedMonth, reportingCurrency),
+    [reportingCurrency, selectedMonth, state],
+  );
+  const previousSummary = useMemo(
+    () =>
+      summarizeFinanceMonth(
+        state,
+        shiftMonthKey(selectedMonth, -1),
+        reportingCurrency,
+      ),
+    [reportingCurrency, selectedMonth, state],
+  );
+  const threeMonthAverage = useMemo(() => {
+    const summaries = [-1, -2, -3].map((offset) =>
+      summarizeFinanceMonth(
+        state,
+        shiftMonthKey(selectedMonth, offset),
+        reportingCurrency,
+      ),
+    );
+    return {
+      income:
+        summaries.reduce((total, item) => total + item.income, 0) /
+        summaries.length,
+      expense:
+        summaries.reduce((total, item) => total + item.expense, 0) /
+        summaries.length,
+    };
+  }, [reportingCurrency, selectedMonth, state]);
   const monthTransactions = useMemo(
     () =>
       state.transactions
@@ -160,17 +352,6 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
             right.createdAt.localeCompare(left.createdAt),
         ),
     [selectedMonth, state.transactions, transactionFilter],
-  );
-  const topExpenseCategories = useMemo(
-    () =>
-      [...expenseByCategory.entries()]
-        .map(([categoryId, amount]) => ({
-          category: state.categories.find((category) => category.id === categoryId),
-          amount,
-        }))
-        .filter((item) => item.category)
-        .sort((left, right) => right.amount - left.amount),
-    [expenseByCategory, state.categories],
   );
   const sourceAccount = state.accounts.find(
     (account) => account.id === transactionAccount,
@@ -304,56 +485,159 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
       bank: { color: "#6f4bd8", icon: "🏦" },
       ewallet: { color: "#e28b52", icon: "👛" },
     }[accountType];
+    const existingAccount = state.accounts.find(
+      (account) => account.id === editingAccountId,
+    );
+    const nextAccount = {
+      id: existingAccount?.id ?? createId("account"),
+      name,
+      type: accountType,
+      currency: existingAccount?.currency ?? accountCurrency,
+      openingBalance: parseFinanceAmountInput(accountOpeningBalance),
+      ...accountVisual,
+    };
     onChange({
       ...state,
-      accounts: [
-        ...state.accounts,
-        {
-          id: createId("account"),
-          name,
-          type: accountType,
-          currency: accountCurrency,
-          openingBalance: parseFinanceAmountInput(accountOpeningBalance),
-          ...accountVisual,
-        },
-      ],
+      accounts: saveFinanceAccount(state.accounts, nextAccount),
     });
+    setReportingCurrency(nextAccount.currency);
+    closeAccount();
+  }
+
+  function openNewAccount() {
+    setEditingAccountId("");
+    setAccountName("");
+    setAccountType("bank");
+    setAccountCurrency(reportingCurrency);
+    setAccountOpeningBalance("");
+    setAccountOpen(true);
+  }
+
+  function editAccount(accountId: string) {
+    const account = state.accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    setEditingAccountId(account.id);
+    setAccountName(account.name);
+    setAccountType(account.type);
+    setAccountCurrency(account.currency);
+    setAccountOpeningBalance(formatFinanceAmountInput(account.openingBalance));
+    setAccountOpen(true);
+  }
+
+  function closeAccount() {
+    setEditingAccountId("");
     setAccountName("");
     setAccountOpeningBalance("");
-    setReportingCurrency(accountCurrency);
     setAccountOpen(false);
+  }
+
+  function deleteAccount(accountId: string) {
+    const account = state.accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    if (state.accounts.length <= 1) {
+      window.alert("Cần giữ lại ít nhất một tài khoản để tiếp tục ghi giao dịch.");
+      return;
+    }
+    const relatedTransactions = state.transactions.filter(
+      (transaction) =>
+        transaction.accountId === accountId ||
+        transaction.toAccountId === accountId,
+    );
+    const transactionWarning = relatedTransactions.length
+      ? ` và ${relatedTransactions.length} giao dịch liên quan? Các giao dịch này sẽ bị xóa khỏi báo cáo; số dư tài khoản đối ứng sẽ tự phục hồi`
+      : "? Ngân sách theo nhóm vẫn được giữ nguyên";
+    if (!window.confirm(`Xóa tài khoản ${account.name}${transactionWarning}.`)) {
+      return;
+    }
+    const nextState = deleteFinanceAccount(state, accountId);
+    const fallbackAccount = nextState.accounts[0];
+    onChange(nextState);
+    if (
+      !nextState.accounts.some(
+        (item) => item.currency === reportingCurrency,
+      ) &&
+      fallbackAccount
+    ) {
+      setReportingCurrency(fallbackAccount.currency);
+    }
+    if (transactionAccount === accountId) {
+      setTransactionAccount(fallbackAccount?.id ?? "");
+    }
+    if (transactionToAccount === accountId) {
+      setTransactionToAccount("");
+    }
+    if (editingAccountId === accountId) closeAccount();
   }
 
   function submitBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const monthlyLimit = parseFinanceAmountInput(budgetLimit);
     if (!budgetCategory || !monthlyLimit) return;
-    const existing = state.budgets.find(
+    const existingForSelection = state.budgets.find(
       (budget) =>
         budget.categoryId === budgetCategory &&
         budget.currency === budgetCurrency,
     );
     const nextBudget = {
-      id: existing?.id ?? createId("budget"),
+      id: editingBudgetId || existingForSelection?.id || createId("budget"),
       categoryId: budgetCategory,
       currency: budgetCurrency,
       monthlyLimit,
     };
     onChange({
       ...state,
-      budgets: [
-        ...state.budgets.filter(
-          (budget) =>
-            budget.categoryId !== budgetCategory ||
-            budget.currency !== budgetCurrency,
-        ),
-        nextBudget,
-      ],
+      budgets: saveFinanceBudget(state.budgets, nextBudget),
     });
+    setEditingBudgetId("");
     setBudgetCategory("");
     setBudgetLimit("");
     setReportingCurrency(budgetCurrency);
     setBudgetOpen(false);
+  }
+
+  function openNewBudget() {
+    setEditingBudgetId("");
+    setBudgetCategory("");
+    setBudgetCurrency(reportingCurrency);
+    setBudgetLimit("");
+    setBudgetOpen(true);
+  }
+
+  function editBudget(budgetId: string) {
+    const budget = state.budgets.find((item) => item.id === budgetId);
+    if (!budget) return;
+    setEditingBudgetId(budget.id);
+    setBudgetCategory(budget.categoryId);
+    setBudgetCurrency(budget.currency);
+    setBudgetLimit(formatFinanceAmountInput(budget.monthlyLimit));
+    setBudgetOpen(true);
+  }
+
+  function closeBudget() {
+    setEditingBudgetId("");
+    setBudgetCategory("");
+    setBudgetLimit("");
+    setBudgetOpen(false);
+  }
+
+  function deleteBudget(budgetId: string) {
+    const budget = state.budgets.find((item) => item.id === budgetId);
+    if (!budget) return;
+    const category = state.categories.find(
+      (item) => item.id === budget.categoryId,
+    );
+    if (
+      !window.confirm(
+        `Xóa ngân sách ${category?.name ?? "nhóm chi"} (${budget.currency})? Giao dịch đã ghi sẽ không bị xóa.`,
+      )
+    ) {
+      return;
+    }
+    onChange({
+      ...state,
+      budgets: deleteFinanceBudget(state.budgets, budgetId),
+    });
+    if (editingBudgetId === budgetId) closeBudget();
   }
 
   function startCategoryForm(
@@ -535,7 +819,10 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
             type="button"
             aria-current={activeTab === tab ? "page" : undefined}
             className={activeTab === tab ? styles.activeTab : ""}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              setActiveTab(tab);
+              setMonthlyReportOpen(false);
+            }}
           >
             {label}
           </button>
@@ -569,7 +856,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
         </div>
       </div>
 
-      {activeTab === "overview" && (
+      {activeTab === "overview" && !monthlyReportOpen && (
         <div className={styles.overviewGrid}>
           <div className={styles.summaryStrip}>
             <article>
@@ -611,32 +898,44 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
           <article className={`${styles.panel} ${styles.flowPanel}`}>
             <div className={styles.panelHeading}>
               <div><span>BÁO CÁO THÁNG</span><h3>Tiền vào và tiền ra</h3></div>
+              <button type="button" onClick={() => setMonthlyReportOpen(true)}>Xem báo cáo</button>
+            </div>
+            <div className={styles.netSnapshot}>
+              <span>Thu nhập ròng</span>
+              <strong className={summary.net >= 0 ? styles.income : styles.expense}>
+                {summary.net >= 0 ? "+" : "−"}{formatMoney(Math.abs(summary.net), reportingCurrency)}
+              </strong>
+              <small>{summary.transactionCount} giao dịch trong {formatMonth(selectedMonth)}</small>
             </div>
             <div className={styles.flowBars}>
               <div><span>Khoản thu</span><b className={styles.income}>{formatMoney(summary.income, reportingCurrency)}</b><i style={{ width: `${summary.income || summary.expense ? Math.max(8, (summary.income / Math.max(summary.income, summary.expense)) * 100) : 0}%` }} /></div>
               <div className={styles.expenseBar}><span>Khoản chi</span><b className={styles.expense}>{formatMoney(summary.expense, reportingCurrency)}</b><i style={{ width: `${summary.income || summary.expense ? Math.max(8, (summary.expense / Math.max(summary.income, summary.expense)) * 100) : 0}%` }} /></div>
             </div>
-            <button className={styles.panelLink} type="button" onClick={() => setActiveTab("transactions")}>Xem giao dịch tháng này <span>→</span></button>
+            <FinanceTrendChart compact currency={reportingCurrency} items={dailyTrend} />
+            <button className={styles.panelLink} type="button" onClick={() => setMonthlyReportOpen(true)}>Xem báo cáo chi tiết <span>→</span></button>
           </article>
 
           <article className={`${styles.panel} ${styles.categoryPanel}`}>
             <div className={styles.panelHeading}>
-              <div><span>PHÂN BỔ CHI TIÊU</span><h3>Chi nhiều nhất</h3></div>
-              <button type="button" onClick={() => setActiveTab("budgets")}>Ngân sách</button>
+              <div><span>BÁO CÁO THEO NHÓM</span><h3>Khoản thu và khoản chi</h3></div>
+              <button type="button" onClick={() => setMonthlyReportOpen(true)}>Xem chi tiết</button>
             </div>
-            {topExpenseCategories.length ? (
-              <div className={styles.categoryList}>
-                {topExpenseCategories.slice(0, 5).map(({ category, amount }) => (
-                  <div key={category!.id} className={styles.categoryRow}>
-                    <span className={styles.roundIcon} style={{ background: `${category!.color}20`, color: category!.color }}>{category!.icon}</span>
-                    <div><strong>{category!.name}</strong><i><b style={{ width: `${summary.expense ? (amount / summary.expense) * 100 : 0}%`, background: category!.color }} /></i></div>
-                    <span><b>{formatMoney(amount, reportingCurrency)}</b><small>{summary.expense ? Math.round((amount / summary.expense) * 100) : 0}%</small></span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className={styles.emptyState}><span>◎</span><strong>Chưa có khoản chi</strong><p>Thêm giao dịch đầu tiên để xem báo cáo theo nhóm.</p></div>
-            )}
+            <div className={styles.categoryPreviewGrid}>
+              <CategoryBreakdownChart
+                currency={reportingCurrency}
+                emptyLabel="Chưa có khoản thu"
+                items={incomeBreakdown.slice(0, 4)}
+                title="Khoản thu"
+                total={summary.income}
+              />
+              <CategoryBreakdownChart
+                currency={reportingCurrency}
+                emptyLabel="Chưa có khoản chi"
+                items={expenseBreakdown.slice(0, 4)}
+                title="Khoản chi"
+                total={summary.expense}
+              />
+            </div>
           </article>
 
           <article className={`${styles.panel} ${styles.recentPanel}`}>
@@ -659,6 +958,100 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
               <div className={styles.emptyState}><span>＋</span><strong>Chưa có giao dịch</strong><p>Ghi khoản thu hoặc chi để bắt đầu theo dõi dòng tiền.</p><button type="button" onClick={() => openTransaction()}>Thêm giao dịch</button></div>
             )}
           </article>
+        </div>
+      )}
+
+      {activeTab === "overview" && monthlyReportOpen && (
+        <div className={styles.monthlyReport}>
+          <div className={styles.reportHeader}>
+            <button type="button" onClick={() => setMonthlyReportOpen(false)} aria-label="Quay lại tổng quan">←</button>
+            <div>
+              <span>BÁO CÁO THÁNG</span>
+              <h3>Chi tiết {formatMonth(selectedMonth)}</h3>
+              <p>{reportingCurrency} · dữ liệu không cộng gộp với tiền tệ khác</p>
+            </div>
+            <button type="button" onClick={() => setActiveTab("transactions")}>Xem giao dịch</button>
+          </div>
+
+          <section className={styles.reportHero}>
+            <div className={styles.reportNet}>
+              <span>Thu nhập ròng</span>
+              <strong className={summary.net >= 0 ? styles.income : styles.expense}>
+                {summary.net >= 0 ? "+" : "−"}{formatMoney(Math.abs(summary.net), reportingCurrency)}
+              </strong>
+              <small>Số dư dòng tiền của {summary.transactionCount} giao dịch</small>
+            </div>
+            <div className={styles.reportMetrics}>
+              <article>
+                <span>Khoản thu</span>
+                <strong className={styles.income}>+{formatMoney(summary.income, reportingCurrency)}</strong>
+                <small>
+                  Tháng trước {formatMoney(previousSummary.income, reportingCurrency)}
+                </small>
+              </article>
+              <article>
+                <span>Khoản chi</span>
+                <strong className={styles.expense}>−{formatMoney(summary.expense, reportingCurrency)}</strong>
+                <small>
+                  Tháng trước {formatMoney(previousSummary.expense, reportingCurrency)}
+                </small>
+              </article>
+            </div>
+          </section>
+
+          <section className={`${styles.panel} ${styles.trendPanel}`}>
+            <div className={styles.panelHeading}>
+              <div><span>XU HƯỚNG TRONG THÁNG</span><h3>Dòng tiền lũy kế theo ngày</h3></div>
+              <div className={styles.trendLegend}>
+                <span><i className={styles.incomeTrend} />Khoản thu</span>
+                <span><i className={styles.expenseTrend} />Khoản chi</span>
+              </div>
+            </div>
+            <FinanceTrendChart currency={reportingCurrency} items={dailyTrend} />
+            <div className={styles.comparisonGrid}>
+              <div>
+                <span>Trung bình thu 3 tháng trước</span>
+                <b>{formatMoney(threeMonthAverage.income, reportingCurrency)}</b>
+              </div>
+              <div>
+                <span>Trung bình chi 3 tháng trước</span>
+                <b>{formatMoney(threeMonthAverage.expense, reportingCurrency)}</b>
+              </div>
+              <div>
+                <span>Chênh lệch chi so với tháng trước</span>
+                <b className={summary.expense <= previousSummary.expense ? styles.income : styles.expense}>
+                  {previousSummary.expense
+                    ? `${summary.expense <= previousSummary.expense ? "Giảm" : "Tăng"} ${Math.abs(Math.round(((summary.expense - previousSummary.expense) / previousSummary.expense) * 100))}%`
+                    : summary.expense
+                      ? "Chưa có dữ liệu đối chiếu"
+                      : "Không thay đổi"}
+                </b>
+              </div>
+            </div>
+          </section>
+
+          <section className={styles.fullBreakdownPanel}>
+            <div className={styles.sectionTitle}>
+              <div><span>PHÂN BỔ DÒNG TIỀN</span><h3>Báo cáo theo nhóm</h3></div>
+              <p>Nhóm con được cộng vào nhóm cha để tỷ lệ luôn phản ánh đúng tổng tháng.</p>
+            </div>
+            <div className={styles.reportBreakdownGrid}>
+              <CategoryBreakdownChart
+                currency={reportingCurrency}
+                emptyLabel="Chưa có khoản thu trong tháng này"
+                items={incomeBreakdown}
+                title="Khoản thu"
+                total={summary.income}
+              />
+              <CategoryBreakdownChart
+                currency={reportingCurrency}
+                emptyLabel="Chưa có khoản chi trong tháng này"
+                items={expenseBreakdown}
+                title="Khoản chi"
+                total={summary.expense}
+              />
+            </div>
+          </section>
         </div>
       )}
 
@@ -706,7 +1099,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
         <article className={`${styles.panel} ${styles.fullPanel}`}>
           <div className={styles.panelHeading}>
             <div><span>KẾ HOẠCH THÁNG</span><h3>Ngân sách theo nhóm</h3></div>
-            <button className={styles.compactAction} type="button" onClick={() => { setBudgetCurrency(reportingCurrency); setBudgetOpen(true); }}>＋ Đặt ngân sách</button>
+            <button className={styles.compactAction} type="button" onClick={openNewBudget}>＋ Đặt ngân sách</button>
           </div>
           {state.budgets.length ? <div className={styles.budgetGrid}>
             {state.budgets.map((budget) => {
@@ -719,12 +1112,16 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
               );
               const progress = Math.min(100, (spent / budget.monthlyLimit) * 100);
               return <div key={budget.id} className={styles.budgetCard}>
-                <div><span className={styles.roundIcon}>{category?.icon ?? "•"}</span><span><strong>{category?.name ?? "Nhóm chi"} · {budget.currency}</strong><small>Còn {formatMoney(Math.max(0, budget.monthlyLimit - spent), budget.currency)}</small></span><b>{Math.round(progress)}%</b></div>
+                <div className={styles.budgetSummary}><span className={styles.roundIcon}>{category?.icon ?? "•"}</span><span><strong>{category?.name ?? "Nhóm chi"} · {budget.currency}</strong><small>Còn {formatMoney(Math.max(0, budget.monthlyLimit - spent), budget.currency)}</small></span><b>{Math.round(progress)}%</b></div>
                 <i><b className={progress >= 100 ? styles.overBudget : ""} style={{ width: `${progress}%`, background: category?.color }} /></i>
                 <p><span>Đã chi {formatMoney(spent, budget.currency)}</span><span>Giới hạn {formatMoney(budget.monthlyLimit, budget.currency)}</span></p>
+                <div className={styles.budgetActions}>
+                  <button type="button" onClick={() => editBudget(budget.id)} aria-label={`Sửa ngân sách ${category?.name ?? "nhóm chi"}`}>Sửa</button>
+                  <button type="button" onClick={() => deleteBudget(budget.id)} aria-label={`Xóa ngân sách ${category?.name ?? "nhóm chi"}`}>Xóa</button>
+                </div>
               </div>;
             })}
-          </div> : <div className={styles.emptyState}><span>◔</span><strong>Chưa đặt ngân sách</strong><p>Đặt giới hạn theo nhóm để biết mình còn có thể chi bao nhiêu.</p><button type="button" onClick={() => { setBudgetCurrency(reportingCurrency); setBudgetOpen(true); }}>Đặt ngân sách đầu tiên</button></div>}
+          </div> : <div className={styles.emptyState}><span>◔</span><strong>Chưa đặt ngân sách</strong><p>Đặt giới hạn theo nhóm để biết mình còn có thể chi bao nhiêu.</p><button type="button" onClick={openNewBudget}>Đặt ngân sách đầu tiên</button></div>}
         </article>
       )}
 
@@ -732,13 +1129,17 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
         <article className={`${styles.panel} ${styles.fullPanel}`}>
           <div className={styles.panelHeading}>
             <div><span>TÀI SẢN THANH KHOẢN</span><h3>Tài khoản của tôi</h3></div>
-            <button className={styles.compactAction} type="button" onClick={() => { setAccountCurrency(reportingCurrency); setAccountOpen(true); }}>＋ Thêm tài khoản</button>
+            <button className={styles.compactAction} type="button" onClick={openNewAccount}>＋ Thêm tài khoản</button>
           </div>
           <div className={styles.accountCards}>
             {accountBalances.map(({ account, balance }) => (
               <div key={account.id} className={styles.accountCard} style={{ borderTopColor: account.color }}>
                 <span className={styles.roundIcon} style={{ background: `${account.color}20`, color: account.color }}>{account.icon}</span>
-                <div><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b></div>
+                <div className={styles.accountCardMain}><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b></div>
+                <div className={styles.accountActions}>
+                  <button className={styles.editButton} type="button" onClick={() => editAccount(account.id)} aria-label={`Sửa tài khoản ${account.name}`}>✎</button>
+                  <button className={styles.deleteButton} type="button" onClick={() => deleteAccount(account.id)} aria-label={`Xóa tài khoản ${account.name}`}>×</button>
+                </div>
               </div>
             ))}
           </div>
@@ -840,27 +1241,34 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
       )}
 
       {accountOpen && (
-        <div className={styles.modalBackdrop} role="presentation">
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeAccount(); }}>
           <form className={`${styles.modal} ${styles.smallModal}`} role="dialog" aria-modal="true" aria-labelledby="account-title" onSubmit={submitAccount}>
-            <div className={styles.modalHeading}><div><span>TÀI KHOẢN MỚI</span><h3 id="account-title">Thêm nơi giữ tiền</h3></div><button type="button" onClick={() => setAccountOpen(false)} aria-label="Đóng">×</button></div>
+            <div className={styles.modalHeading}><div><span>{editingAccountId ? "CHỈNH SỬA TÀI KHOẢN" : "TÀI KHOẢN MỚI"}</span><h3 id="account-title">{editingAccountId ? "Cập nhật nơi giữ tiền" : "Thêm nơi giữ tiền"}</h3></div><button type="button" onClick={closeAccount} aria-label="Đóng">×</button></div>
             <label>Tên tài khoản<input autoFocus value={accountName} onChange={(event) => setAccountName(event.target.value)} placeholder="Ví dụ: Vietcombank" required maxLength={100} /></label>
             <label>Loại tài khoản<select value={accountType} onChange={(event) => setAccountType(event.target.value as FinanceAccountType)}>{Object.entries(accountTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label>Đơn vị tiền<select value={accountCurrency} onChange={(event) => setAccountCurrency(event.target.value as FinanceCurrency)}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
+            <label>Đơn vị tiền<select value={accountCurrency} disabled={Boolean(editingAccountId)} onChange={(event) => setAccountCurrency(event.target.value as FinanceCurrency)}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
             <label>Số dư ban đầu<input inputMode="numeric" type="text" value={accountOpeningBalance} onChange={(event) => setAccountOpeningBalance(formatFinanceAmountInput(event.target.value))} placeholder={accountCurrency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"} /></label>
-            <p className={styles.formHint}>Đơn vị tiền của tài khoản không đổi sau khi tạo để lịch sử luôn chính xác.</p>
-            <button className={styles.saveButton} type="submit">Thêm tài khoản</button>
+            <p className={styles.formHint}>{editingAccountId ? "Đổi số dư ban đầu sẽ làm số dư hiện tại tăng hoặc giảm tương ứng. Các giao dịch cũ vẫn được giữ nguyên." : "Đơn vị tiền của tài khoản không đổi sau khi tạo để lịch sử luôn chính xác."}</p>
+            <div className={styles.budgetModalActions}>
+              {editingAccountId && <button className={styles.dangerAction} type="button" onClick={() => deleteAccount(editingAccountId)}>Xóa tài khoản</button>}
+              <button className={styles.saveButton} type="submit">{editingAccountId ? "Lưu thay đổi" : "Thêm tài khoản"}</button>
+            </div>
           </form>
         </div>
       )}
 
       {budgetOpen && (
-        <div className={styles.modalBackdrop} role="presentation">
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeBudget(); }}>
           <form className={`${styles.modal} ${styles.smallModal}`} role="dialog" aria-modal="true" aria-labelledby="budget-title" onSubmit={submitBudget}>
-            <div className={styles.modalHeading}><div><span>NGÂN SÁCH THÁNG</span><h3 id="budget-title">Đặt giới hạn chi</h3></div><button type="button" onClick={() => setBudgetOpen(false)} aria-label="Đóng">×</button></div>
-            <label>Đơn vị ngân sách<select value={budgetCurrency} onChange={(event) => { const currency = event.target.value as FinanceCurrency; setBudgetCurrency(currency); setBudgetLimit(formatFinanceAmountInput(state.budgets.find((budget) => budget.categoryId === budgetCategory && budget.currency === currency)?.monthlyLimit ?? "")); }}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
-            <label>Nhóm chi<select autoFocus value={budgetCategory} onChange={(event) => { const nextCategoryId = event.target.value; setBudgetCategory(nextCategoryId); setBudgetLimit(formatFinanceAmountInput(state.budgets.find((budget) => budget.categoryId === nextCategoryId && budget.currency === budgetCurrency)?.monthlyLimit ?? "")); }} required><option value="">Chọn nhóm</option>{renderCategoryOptions("expense")}</select></label>
+            <div className={styles.modalHeading}><div><span>{editingBudgetId ? "CHỈNH SỬA NGÂN SÁCH" : "NGÂN SÁCH THÁNG"}</span><h3 id="budget-title">{editingBudgetId ? "Cập nhật giới hạn chi" : "Đặt giới hạn chi"}</h3></div><button type="button" onClick={closeBudget} aria-label="Đóng">×</button></div>
+            {editingBudgetId && <p className={styles.formHint}>Bạn có thể đổi nhóm, đơn vị tiền hoặc giới hạn. Nếu trùng với một ngân sách khác, bản đang sửa sẽ thay thế ngân sách đó.</p>}
+            <label>Đơn vị ngân sách<select value={budgetCurrency} onChange={(event) => setBudgetCurrency(event.target.value as FinanceCurrency)}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
+            <label>Nhóm chi<select autoFocus value={budgetCategory} onChange={(event) => setBudgetCategory(event.target.value)} required><option value="">Chọn nhóm</option>{renderCategoryOptions("expense", budgetCategory)}</select></label>
             <label>Giới hạn mỗi tháng<input inputMode="numeric" type="text" value={budgetLimit} onChange={(event) => setBudgetLimit(formatFinanceAmountInput(event.target.value))} placeholder={budgetCurrency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"} required /></label>
-            <button className={styles.saveButton} type="submit">Lưu ngân sách</button>
+            <div className={styles.budgetModalActions}>
+              {editingBudgetId && <button className={styles.dangerAction} type="button" onClick={() => deleteBudget(editingBudgetId)}>Xóa ngân sách</button>}
+              <button className={styles.saveButton} type="submit">{editingBudgetId ? "Lưu thay đổi" : "Lưu ngân sách"}</button>
+            </div>
           </form>
         </div>
       )}
