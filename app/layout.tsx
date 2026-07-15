@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tính Lãi Suất Tiết Kiệm",
+  title: "MoneyMind – Tiết kiệm và Thu chi",
   description:
-    "Công cụ theo dõi khoản gửi, tính lãi dự kiến và lập kế hoạch tái đầu tư.",
+    "Quản lý khoản gửi tiết kiệm, dòng tiền, ngân sách và tài khoản cá nhân trong một ứng dụng.",
 };
 
 export default function RootLayout({

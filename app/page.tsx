@@ -13,26 +13,41 @@ import {
   consumeMagicLinkSession,
   ensureCloudSession,
   isCloudConfigured,
+  isNewerCloudUpdate,
   readCloudState,
   restoreCloudSession,
   signInWithPassword,
   signOutCloud,
   writeCloudState,
 } from "@/lib/supabase-rest";
+import {
+  CloudRealtimeStatus,
+  subscribeToCloudState,
+} from "@/lib/supabase-realtime";
+import FinanceManager from "./finance-manager";
+import {
+  createDefaultFinanceState,
+  FinanceState,
+  hasMeaningfulFinanceData,
+  normalizeFinanceState,
+} from "@/lib/finance";
 
 const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
 const SAVINGS_KEY = "savings";
 const RATES_KEY = "interestRates";
 const CASH_LEDGER_KEY = "cashLedger";
 const GOAL_SETTINGS_KEY = "goalSettings";
+const FINANCE_KEY = "financeState";
+const WORKSPACE_KEY = "activeWorkspace";
 const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
-const BACKUP_FORMAT_VERSION = 2;
+const BACKUP_FORMAT_VERSION = 4;
 const MAX_BACKUP_SIZE = 5_000_000;
 const INTEREST_DEDUCTION_RATE = 0.05;
 const AVERAGE_DAYS_PER_MONTH = 365 / 12;
 const MAX_GOAL_MONTHS = 1_200;
 
 type FormMode = "add" | "edit" | "reinvest";
+type AppWorkspace = "savings" | "finance";
 
 type SavingsCycle = {
   amount: number;
@@ -82,6 +97,7 @@ type BackupPayload = {
   savings: SavingsItem[];
   interestRates: number[];
   cashLedger: CashLedgerEntry[];
+  finance: FinanceState;
 };
 
 type BackupStatus = {
@@ -98,7 +114,8 @@ type CloudAppState = {
   };
   interestRates: number[];
   savings: SavingsItem[];
-  schemaVersion: 1;
+  finance: FinanceState;
+  schemaVersion: 3;
 };
 
 type AuthStatus = "checking" | "local" | "signed-in" | "signed-out";
@@ -555,11 +572,15 @@ function parseBackupPayload(value: unknown): BackupPayload | null {
   const version = isRecord(value) ? Number(value.version) : 0;
   const rawCashLedger =
     isRecord(value) && version === 1 ? [] : isRecord(value) ? value.cashLedger : null;
+  const rawFinance =
+    isRecord(value) && version >= 3
+      ? value.finance
+      : createDefaultFinanceState();
 
   if (
     !isRecord(value) ||
     value.app !== BACKUP_APP_ID ||
-    (version !== 1 && version !== BACKUP_FORMAT_VERSION) ||
+    ![1, 2, 3, BACKUP_FORMAT_VERSION].includes(version) ||
     typeof value.exportedAt !== "string" ||
     !Array.isArray(value.savings) ||
     !Array.isArray(value.interestRates) ||
@@ -593,11 +614,18 @@ function parseBackupPayload(value: unknown): BackupPayload | null {
     savings: savings as SavingsItem[],
     interestRates: [...new Set(interestRates)],
     cashLedger: cashLedger as CashLedgerEntry[],
+    finance: normalizeFinanceState(rawFinance),
   };
 }
 
 function parseCloudAppState(value: unknown): CloudAppState | null {
-  if (!isRecord(value) || Number(value.schemaVersion) !== 1) return null;
+  const schemaVersion = isRecord(value) ? Number(value.schemaVersion) : 0;
+  if (
+    !isRecord(value) ||
+    (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3)
+  ) {
+    return null;
+  }
 
   const backup = parseBackupPayload({
     app: BACKUP_APP_ID,
@@ -606,6 +634,7 @@ function parseCloudAppState(value: unknown): CloudAppState | null {
     savings: value.savings,
     interestRates: value.interestRates,
     cashLedger: value.cashLedger,
+    finance: schemaVersion >= 2 ? value.finance : createDefaultFinanceState(),
   });
   if (!backup) return null;
 
@@ -620,10 +649,11 @@ function parseCloudAppState(value: unknown): CloudAppState | null {
       : "";
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     savings: backup.savings,
     interestRates: backup.interestRates,
     cashLedger: backup.cashLedger,
+    finance: backup.finance,
     goal: {
       monthlyInterest: monthlyInterest.slice(0, 30),
       interestRate: interestRate.slice(0, 20),
@@ -636,15 +666,17 @@ function createCloudAppState(
   savings: SavingsItem[],
   interestRates: number[],
   cashLedger: CashLedgerEntry[],
+  finance: FinanceState,
   goalMonthlyInterest: string,
   goalInterestRate: string,
   goalMonthlyContribution: string,
 ): CloudAppState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     savings,
     interestRates,
     cashLedger,
+    finance,
     goal: {
       monthlyInterest: goalMonthlyInterest,
       interestRate: goalInterestRate,
@@ -765,6 +797,11 @@ export default function Home() {
   const [savings, setSavings] = useState<SavingsItem[]>([]);
   const [interestRates, setInterestRates] = useState(DEFAULT_INTEREST_RATES);
   const [cashLedger, setCashLedger] = useState<CashLedgerEntry[]>([]);
+  const [finance, setFinance] = useState<FinanceState>(() =>
+    createDefaultFinanceState(),
+  );
+  const [activeWorkspace, setActiveWorkspace] =
+    useState<AppWorkspace>("savings");
   const [form, setForm] = useState<SavingsForm>(emptyForm());
   const [newInterestRate, setNewInterestRate] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -790,6 +827,8 @@ export default function Home() {
   const [cloudReady, setCloudReady] = useState(false);
   const [cloudSyncStatus, setCloudSyncStatus] =
     useState<CloudSyncStatus>("idle");
+  const [realtimeStatus, setRealtimeStatus] =
+    useState<CloudRealtimeStatus>("disconnected");
   const [cloudError, setCloudError] = useState("");
   const [migrationPending, setMigrationPending] = useState(false);
   const [cloudActionBusy, setCloudActionBusy] = useState(false);
@@ -799,6 +838,10 @@ export default function Home() {
   const [loginMessageIsError, setLoginMessageIsError] = useState(false);
   const [ready, setReady] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const cloudSessionRef = useRef<CloudSession | null>(null);
+  const lastCloudUpdatedAtRef = useRef("");
+  const skipNextCloudWriteRef = useRef(false);
+  const cloudWritePendingRef = useRef(false);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- localStorage is client-only, so persisted data must be hydrated after mount. */
@@ -808,6 +851,8 @@ export default function Home() {
     const storedGoal = readStoredRecord<CloudAppState["goal"]>(
       GOAL_SETTINGS_KEY,
     );
+    const storedFinance = readStoredRecord<FinanceState>(FINANCE_KEY);
+    const storedWorkspace = localStorage.getItem(WORKSPACE_KEY);
     const localSavings = storedSavings
       ? storedSavings.map(recalculateSavingsItem)
       : [];
@@ -831,10 +876,13 @@ export default function Home() {
       interestRate: storedGoal?.interestRate ?? "",
       monthlyContribution: storedGoal?.monthlyContribution ?? "",
     };
+    const localFinance = normalizeFinanceState(storedFinance);
 
     setSavings(localSavings);
     setInterestRates(localRates);
     setCashLedger(localCashLedger);
+    setFinance(localFinance);
+    setActiveWorkspace(storedWorkspace === "finance" ? "finance" : "savings");
     setGoalMonthlyInterest(localGoal.monthlyInterest);
     setGoalInterestRate(localGoal.interestRate);
     setGoalMonthlyContribution(localGoal.monthlyContribution);
@@ -869,9 +917,12 @@ export default function Home() {
           setSavings(remoteState.savings);
           setInterestRates(remoteState.interestRates);
           setCashLedger(remoteState.cashLedger);
+          setFinance(remoteState.finance);
           setGoalMonthlyInterest(remoteState.goal.monthlyInterest);
           setGoalInterestRate(remoteState.goal.interestRate);
           setGoalMonthlyContribution(remoteState.goal.monthlyContribution);
+          lastCloudUpdatedAtRef.current = remoteRow.updated_at;
+          skipNextCloudWriteRef.current = true;
           setCloudReady(true);
           setCloudSyncStatus("saved");
         } else {
@@ -886,7 +937,8 @@ export default function Home() {
               hasCustomRates ||
               localGoal.monthlyInterest ||
               localGoal.interestRate ||
-              localGoal.monthlyContribution,
+              localGoal.monthlyContribution ||
+              hasMeaningfulFinanceData(localFinance),
           );
           setMigrationPending(hasLocalData);
           setCloudReady(!hasLocalData);
@@ -966,6 +1018,49 @@ export default function Home() {
   ]);
 
   useEffect(() => {
+    if (!ready) return;
+    localStorage.setItem(WORKSPACE_KEY, activeWorkspace);
+  }, [activeWorkspace, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
+      localStorage.removeItem(FINANCE_KEY);
+    } else if (authStatus === "local" || migrationPending) {
+      localStorage.setItem(FINANCE_KEY, JSON.stringify(finance));
+    }
+  }, [authStatus, cloudReady, finance, migrationPending, ready]);
+
+  useEffect(() => {
+    cloudSessionRef.current = cloudSession;
+  }, [cloudSession]);
+
+  useEffect(() => {
+    if (authStatus !== "signed-in" || !cloudSession) return;
+
+    const refreshDelay = Math.max(
+      1_000,
+      cloudSession.expiresAt - Date.now() - 55_000,
+    );
+    const timeout = window.setTimeout(() => {
+      void ensureCloudSession(cloudSession)
+        .then((activeSession) => {
+          if (activeSession !== cloudSession) setCloudSession(activeSession);
+        })
+        .catch((error: unknown) => {
+          setRealtimeStatus("error");
+          setCloudError(
+            error instanceof Error
+              ? error.message
+              : "Không thể làm mới phiên đồng bộ realtime.",
+          );
+        });
+    }, refreshDelay);
+
+    return () => window.clearTimeout(timeout);
+  }, [authStatus, cloudSession]);
+
+  useEffect(() => {
     if (
       !ready ||
       authStatus !== "signed-in" ||
@@ -976,26 +1071,94 @@ export default function Home() {
       return;
     }
 
+    return subscribeToCloudState<unknown>({
+      session: cloudSession,
+      onStatus: setRealtimeStatus,
+      onChange: (remoteRow) => {
+        if (
+          cloudWritePendingRef.current ||
+          !isNewerCloudUpdate(
+            lastCloudUpdatedAtRef.current,
+            remoteRow.updated_at,
+          )
+        ) {
+          return;
+        }
+
+        const remoteState = parseCloudAppState(remoteRow.data);
+        if (!remoteState) {
+          setCloudError("Dữ liệu realtime không đúng định dạng.");
+          setCloudSyncStatus("error");
+          return;
+        }
+
+        lastCloudUpdatedAtRef.current = remoteRow.updated_at;
+        skipNextCloudWriteRef.current = true;
+        setSavings(remoteState.savings);
+        setInterestRates(remoteState.interestRates);
+        setCashLedger(remoteState.cashLedger);
+        setFinance(remoteState.finance);
+        setGoalMonthlyInterest(remoteState.goal.monthlyInterest);
+        setGoalInterestRate(remoteState.goal.interestRate);
+        setGoalMonthlyContribution(remoteState.goal.monthlyContribution);
+        setCloudError("");
+        setCloudSyncStatus("saved");
+      },
+    });
+  }, [
+    authStatus,
+    cloudReady,
+    cloudSession,
+    migrationPending,
+    ready,
+  ]);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      authStatus !== "signed-in" ||
+      !cloudReady ||
+      migrationPending
+    ) {
+      return;
+    }
+
+    if (skipNextCloudWriteRef.current) {
+      skipNextCloudWriteRef.current = false;
+      cloudWritePendingRef.current = false;
+      return;
+    }
+
+    let writeStarted = false;
+    const sessionAtStart = cloudSessionRef.current;
+    if (!sessionAtStart) return;
+    cloudWritePendingRef.current = true;
     const timeout = window.setTimeout(() => {
+      writeStarted = true;
       const state = createCloudAppState(
         savings,
         interestRates,
         cashLedger,
+        finance,
         goalMonthlyInterest,
         goalInterestRate,
         goalMonthlyContribution,
       );
       setCloudSyncStatus("saving");
-      void ensureCloudSession(cloudSession)
-        .then((activeSession) => {
-          if (activeSession !== cloudSession) setCloudSession(activeSession);
-          return writeCloudState(activeSession, state);
-        })
-        .then(() => {
+      void ensureCloudSession(sessionAtStart)
+        .then(async (activeSession) => ({
+          activeSession,
+          row: await writeCloudState(activeSession, state),
+        }))
+        .then(({ activeSession, row }) => {
+          if (activeSession !== sessionAtStart) setCloudSession(activeSession);
+          if (row) lastCloudUpdatedAtRef.current = row.updated_at;
+          cloudWritePendingRef.current = false;
           setCloudError("");
           setCloudSyncStatus("saved");
         })
         .catch((error: unknown) => {
+          cloudWritePendingRef.current = false;
           setCloudError(
             error instanceof Error
               ? error.message
@@ -1005,12 +1168,15 @@ export default function Home() {
         });
     }, 800);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      if (!writeStarted) cloudWritePendingRef.current = false;
+    };
   }, [
     authStatus,
     cashLedger,
     cloudReady,
-    cloudSession,
+    finance,
     goalInterestRate,
     goalMonthlyContribution,
     goalMonthlyInterest,
@@ -1451,6 +1617,7 @@ export default function Home() {
       savings,
       interestRates,
       cashLedger,
+      finance,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -1458,14 +1625,14 @@ export default function Home() {
     const downloadUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = downloadUrl;
-    link.download = `tiet-kiem-backup-${getTodayIso()}.json`;
+    link.download = `moneymind-backup-${getTodayIso()}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
     setBackupStatus({
       kind: "success",
-      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản gửi và ${cashLedger.length} giao dịch ví. Hãy lưu tệp vào nơi bạn có thể mở trên thiết bị khác.`,
+      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản gửi, ${cashLedger.length} giao dịch ví và ${finance.transactions.length} giao dịch thu chi. Hãy lưu tệp vào nơi bạn có thể mở trên thiết bị khác.`,
     });
   }
 
@@ -1487,19 +1654,20 @@ export default function Home() {
       if (!payload) throw new Error("Invalid backup");
 
       const shouldRestore = window.confirm(
-        `Khôi phục ${payload.savings.length} khoản gửi và ${payload.cashLedger.length} giao dịch ví từ bản sao lưu? Dữ liệu hiện có trên thiết bị này, bao gồm khoản gửi và ví tiền, sẽ bị thay thế.`,
+        `Khôi phục ${payload.savings.length} khoản gửi, ${payload.cashLedger.length} giao dịch ví và ${payload.finance.transactions.length} giao dịch thu chi từ bản sao lưu? Toàn bộ dữ liệu hiện có trên thiết bị này sẽ bị thay thế.`,
       );
       if (!shouldRestore) return;
 
       setSavings(payload.savings);
       setInterestRates(payload.interestRates);
       setCashLedger(payload.cashLedger);
+      setFinance(payload.finance);
       setCollapsedRates(new Set());
       setExpandedHistoryId(null);
       resetForm();
       setBackupStatus({
         kind: "success",
-        text: `Đã khôi phục ${payload.savings.length} khoản gửi. Dữ liệu đã được lưu trên thiết bị này.`,
+        text: `Đã khôi phục ${payload.savings.length} khoản gửi và ${payload.finance.transactions.length} giao dịch thu chi. Dữ liệu đã được lưu trên thiết bị này.`,
       });
     } catch {
       setBackupStatus({
@@ -1555,6 +1723,10 @@ export default function Home() {
       setMigrationPending(false);
       setCloudError("");
       setCloudSyncStatus("idle");
+      setRealtimeStatus("disconnected");
+      lastCloudUpdatedAtRef.current = "";
+      skipNextCloudWriteRef.current = false;
+      cloudWritePendingRef.current = false;
       setAuthStatus("signed-out");
       setCloudActionBusy(false);
     }
@@ -1570,11 +1742,14 @@ export default function Home() {
         savings,
         interestRates,
         cashLedger,
+        finance,
         goalMonthlyInterest,
         goalInterestRate,
         goalMonthlyContribution,
       );
-      await writeCloudState(activeSession, state);
+      const row = await writeCloudState(activeSession, state);
+      if (row) lastCloudUpdatedAtRef.current = row.updated_at;
+      skipNextCloudWriteRef.current = true;
       setCloudSession(activeSession);
       setMigrationPending(false);
       setCloudReady(true);
@@ -1609,14 +1784,18 @@ export default function Home() {
         [],
         DEFAULT_INTEREST_RATES,
         [],
+        createDefaultFinanceState(),
         "",
         "",
         "",
       );
-      await writeCloudState(activeSession, emptyState);
+      const row = await writeCloudState(activeSession, emptyState);
+      if (row) lastCloudUpdatedAtRef.current = row.updated_at;
+      skipNextCloudWriteRef.current = true;
       setSavings([]);
       setInterestRates(DEFAULT_INTEREST_RATES);
       setCashLedger([]);
+      setFinance(createDefaultFinanceState());
       setGoalMonthlyInterest("");
       setGoalInterestRate("");
       setGoalMonthlyContribution("");
@@ -1746,7 +1925,8 @@ export default function Home() {
           <h1>Thiết bị này đang có dữ liệu cũ</h1>
           <p>
             Tìm thấy <strong>{savings.length} khoản gửi</strong> và{
-            " "}<strong>{cashLedger.length} giao dịch ví</strong>. Ứng dụng sẽ
+            " "}<strong>{cashLedger.length} giao dịch ví</strong>, cùng{
+            " "}<strong>{finance.transactions.length} giao dịch thu chi</strong>. Ứng dụng sẽ
             không tự ghi đè cho đến khi bạn chọn.
           </p>
           {cloudError && (
@@ -1793,56 +1973,118 @@ export default function Home() {
         ? "Thêm khoản tái đầu tư"
         : "Thêm khoản gửi";
 
+  const appHeader = (
+    <>
+      <header className={`hero${activeWorkspace === "finance" ? " finance-hero" : ""}`}>
+        <div className="hero-copy">
+          <span className="eyebrow">
+            {activeWorkspace === "finance"
+              ? "QUẢN LÝ TÀI CHÍNH CÁ NHÂN"
+              : "SỔ TIẾT KIỆM CÁ NHÂN"}
+          </span>
+          <h1>
+            {activeWorkspace === "finance"
+              ? "Thu chi rõ ràng, quyết định nhẹ đầu"
+              : "Tính lãi suất tiết kiệm"}
+          </h1>
+          <p>
+            {activeWorkspace === "finance"
+              ? "Theo dõi tiền vào, tiền ra, ngân sách và số dư từng tài khoản trong cùng một nơi."
+              : "Theo dõi từng khoản gửi, lãi sau khấu trừ và số tiền dự kiến khi đáo hạn — tất cả trong một nơi."}
+          </p>
+        </div>
+        {authStatus === "signed-in" && cloudSession ? (
+          <div className="account-pill">
+            <div>
+              <span
+                className={`sync-dot ${
+                  cloudSyncStatus === "saving" || cloudSyncStatus === "error"
+                    ? cloudSyncStatus
+                    : realtimeStatus
+                }`}
+                aria-hidden="true"
+              />
+              <strong>
+                {cloudSyncStatus === "saving"
+                  ? "Đang đồng bộ"
+                  : cloudSyncStatus === "error"
+                    ? "Chưa đồng bộ"
+                    : realtimeStatus === "connected"
+                      ? "Realtime đang hoạt động"
+                      : realtimeStatus === "connecting"
+                        ? "Đang kết nối realtime"
+                        : "Đã lưu · realtime gián đoạn"}
+              </strong>
+              <small>{cloudSession.user.email}</small>
+            </div>
+            <button
+              type="button"
+              disabled={cloudActionBusy}
+              onClick={() => void handleCloudSignOut()}
+            >
+              Đăng xuất
+            </button>
+          </div>
+        ) : (
+          <div className="privacy-pill" aria-label="Dữ liệu được lưu cục bộ">
+            <span aria-hidden="true">◉</span>
+            Chế độ cục bộ · có sao lưu
+          </div>
+        )}
+      </header>
+      <nav className="workspace-switcher" aria-label="Phân hệ MoneyMind">
+        <button
+          type="button"
+          aria-current={activeWorkspace === "savings" ? "page" : undefined}
+          className={activeWorkspace === "savings" ? "active" : ""}
+          onClick={() => setActiveWorkspace("savings")}
+        >
+          <span aria-hidden="true">◇</span>
+          Tiết kiệm
+        </button>
+        <button
+          type="button"
+          aria-current={activeWorkspace === "finance" ? "page" : undefined}
+          className={activeWorkspace === "finance" ? "active" : ""}
+          onClick={() => setActiveWorkspace("finance")}
+        >
+          <span aria-hidden="true">↕</span>
+          Thu chi
+        </button>
+      </nav>
+    </>
+  );
+
+  const cloudBanner = cloudError && cloudReady && (
+    <div className="cloud-error-banner" role="alert">
+      <span aria-hidden="true">!</span>
+      <div>
+        <strong>Thay đổi vẫn còn trên màn hình này</strong>
+        <p>{cloudError} Ứng dụng sẽ thử lại ở lần thay đổi tiếp theo.</p>
+      </div>
+    </div>
+  );
+
+  if (activeWorkspace === "finance") {
+    return (
+      <main className="page-shell">
+        <div className="app-container">
+          {appHeader}
+          {cloudBanner}
+          <FinanceManager state={finance} onChange={setFinance} />
+          <footer>
+            <p>MoneyMind · Dữ liệu thu chi được sao lưu và đồng bộ cùng tài khoản của bạn.</p>
+          </footer>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <div className="app-container">
-        <header className="hero">
-          <div className="hero-copy">
-            <span className="eyebrow">SỔ TIẾT KIỆM CÁ NHÂN</span>
-            <h1>Tính lãi suất tiết kiệm</h1>
-            <p>
-              Theo dõi từng khoản gửi, lãi sau khấu trừ và số tiền dự kiến khi
-              đáo hạn — tất cả trong một nơi.
-            </p>
-          </div>
-          {authStatus === "signed-in" && cloudSession ? (
-            <div className="account-pill">
-              <div>
-                <span className={`sync-dot ${cloudSyncStatus}`} aria-hidden="true" />
-                <strong>
-                  {cloudSyncStatus === "saving"
-                    ? "Đang đồng bộ"
-                    : cloudSyncStatus === "error"
-                      ? "Chưa đồng bộ"
-                      : "Đã lưu trên tài khoản"}
-                </strong>
-                <small>{cloudSession.user.email}</small>
-              </div>
-              <button
-                type="button"
-                disabled={cloudActionBusy}
-                onClick={() => void handleCloudSignOut()}
-              >
-                Đăng xuất
-              </button>
-            </div>
-          ) : (
-            <div className="privacy-pill" aria-label="Dữ liệu được lưu cục bộ">
-              <span aria-hidden="true">◉</span>
-              Chế độ cục bộ · có sao lưu
-            </div>
-          )}
-        </header>
-
-        {cloudError && cloudReady && (
-          <div className="cloud-error-banner" role="alert">
-            <span aria-hidden="true">!</span>
-            <div>
-              <strong>Thay đổi vẫn còn trên màn hình này</strong>
-              <p>{cloudError} Ứng dụng sẽ thử lại ở lần thay đổi tiếp theo.</p>
-            </div>
-          </div>
-        )}
+        {appHeader}
+        {cloudBanner}
 
         <section className="form-section" id="deposit-form">
           <div className="section-heading">

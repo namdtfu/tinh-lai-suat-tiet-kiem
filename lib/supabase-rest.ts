@@ -25,10 +25,19 @@ type SupabaseTokenPayload = {
   };
 };
 
-type CloudStateRow<T> = {
+export type CloudStateRow<T> = {
   data: T;
   updated_at: string;
 };
+
+export function isNewerCloudUpdate(current: string, incoming: string) {
+  const incomingTime = Date.parse(incoming);
+  if (!Number.isFinite(incomingTime)) return false;
+
+  const currentTime = Date.parse(current);
+  if (!Number.isFinite(currentTime)) return true;
+  return incomingTime > currentTime;
+}
 
 export function isCloudConfigured() {
   return Boolean(SUPABASE_URL && SUPABASE_KEY);
@@ -258,7 +267,6 @@ export async function writeCloudState<T>(session: CloudSession, data: T) {
     body: JSON.stringify({
       data,
       schema_version: 1,
-      updated_at: new Date().toISOString(),
       user_id: session.user.id,
     }),
   });

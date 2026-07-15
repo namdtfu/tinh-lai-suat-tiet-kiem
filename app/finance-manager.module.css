@@ -1,0 +1,1127 @@
+.financeShell {
+  padding: 34px 38px 46px;
+  background: #f6f4f9;
+}
+
+.financeTopbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.kicker,
+.panelHeading span,
+.modalHeading span {
+  color: #837b90;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+}
+
+.financeTopbar h2 {
+  margin-top: 4px;
+  color: #241d30;
+  font-size: clamp(2rem, 5vw, 3.15rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.financeTopbar p {
+  margin-top: 9px;
+  color: #7d7687;
+  font-size: 0.82rem;
+}
+
+.primaryAction,
+.compactAction,
+.saveButton,
+.emptyState button {
+  color: #fff;
+  background: linear-gradient(135deg, #6f4bd8, #5030aa);
+  border: 0;
+  border-radius: 12px;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(80, 48, 170, 0.2);
+}
+
+.primaryAction {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 18px;
+}
+
+.primaryAction span {
+  font-size: 1.2rem;
+}
+
+.tabList {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  padding: 5px;
+  background: #e9e5ef;
+  border-radius: 14px;
+}
+
+.tabList button {
+  min-height: 44px;
+  color: #746d7e;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 780;
+  transition: 160ms ease;
+}
+
+.tabList button:hover {
+  color: #4f2da7;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.tabList .activeTab {
+  color: #4f2da7;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(54, 36, 80, 0.09);
+}
+
+.reportControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 18px 0 22px;
+}
+
+.currencySwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  gap: 6px;
+  padding: 5px;
+  background: #e9e5ef;
+  border-radius: 14px;
+}
+
+.currencySwitch button {
+  display: grid;
+  min-height: 50px;
+  padding: 7px 13px;
+  color: #746d7e;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+}
+
+.currencySwitch button span {
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.currencySwitch button strong {
+  margin-top: 2px;
+  font-size: 0.78rem;
+}
+
+.currencySwitch .activeCurrency {
+  color: #4f2da7;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(54, 36, 80, 0.09);
+}
+
+.monthPicker {
+  display: flex;
+  max-width: 310px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+}
+
+.monthPicker button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #685a7d;
+  background: #fff;
+  border: 1px solid #e2dce9;
+  border-radius: 10px;
+  font-size: 1.45rem;
+}
+
+.monthPicker strong {
+  color: #4e455a;
+  font-size: 0.86rem;
+  text-transform: capitalize;
+}
+
+.overviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.summaryStrip {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e7e2ed;
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(49, 30, 74, 0.06);
+}
+
+.summaryStrip article {
+  padding: 20px;
+  border-right: 1px solid #eeeaf2;
+}
+
+.summaryStrip article:last-child {
+  border-right: 0;
+}
+
+.summaryStrip span,
+.summaryStrip strong {
+  display: block;
+}
+
+.summaryStrip span {
+  color: #827a8d;
+  font-size: 0.72rem;
+}
+
+.summaryStrip strong {
+  margin-top: 5px;
+  color: #2b2337;
+  font-size: clamp(0.95rem, 2vw, 1.35rem);
+  letter-spacing: -0.025em;
+}
+
+.income {
+  color: #168a66 !important;
+}
+
+.expense {
+  color: #d64c5c !important;
+}
+
+.panel {
+  min-width: 0;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #e7e2ed;
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(49, 30, 74, 0.06);
+}
+
+.panelHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.panelHeading h3 {
+  margin-top: 3px;
+  color: #332a40;
+  font-size: 1.05rem;
+}
+
+.panelHeading > button:not(.compactAction),
+.panelLink {
+  color: #6745ca;
+  background: transparent;
+  border: 0;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.panelHeading select {
+  min-height: 38px;
+  padding: 0 34px 0 12px;
+  color: #574d64;
+  background: #f8f6fa;
+  border: 1px solid #e2dce9;
+  border-radius: 9px;
+  outline: none;
+}
+
+.headingActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.secondaryAction {
+  min-height: 38px;
+  padding: 0 12px;
+  color: #6745ca;
+  background: #f2edfb;
+  border: 1px solid #e3d8f7;
+  border-radius: 9px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.accountsPanel,
+.flowPanel {
+  min-height: 310px;
+}
+
+.accountList,
+.transactionList,
+.categoryList {
+  display: grid;
+}
+
+.accountRow,
+.transactionRow,
+.categoryRow {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eeeaf2;
+}
+
+.accountRow:last-child,
+.transactionRow:last-child,
+.categoryRow:last-child {
+  border-bottom: 0;
+}
+
+.accountRow {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.roundIcon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #5b4d70;
+  background: #f0ecf5;
+  border-radius: 13px;
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.accountRow div,
+.transactionRow div,
+.categoryRow div {
+  min-width: 0;
+}
+
+.accountRow strong,
+.accountRow small,
+.transactionRow strong,
+.transactionRow small {
+  display: block;
+}
+
+.accountRow strong,
+.transactionRow strong,
+.categoryRow strong {
+  color: #3a3146;
+  font-size: 0.84rem;
+}
+
+.accountRow small,
+.transactionRow small,
+.categoryRow small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #8c8496;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountRow > b,
+.transactionRow > b {
+  color: #4e4559;
+  font-size: 0.83rem;
+  white-space: nowrap;
+}
+
+.flowBars {
+  display: grid;
+  gap: 24px;
+  padding: 14px 0 22px;
+}
+
+.flowBars div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.flowBars span {
+  color: #776f82;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.flowBars b {
+  font-size: 0.8rem;
+}
+
+.flowBars i {
+  height: 14px;
+  min-width: 0;
+  grid-column: 1 / -1;
+  background: linear-gradient(90deg, #26a77c, #5bc5a2);
+  border-radius: 999px;
+  transition: width 300ms ease;
+}
+
+.flowBars .expenseBar i {
+  background: linear-gradient(90deg, #d64c5c, #ee7885);
+}
+
+.panelLink {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16px;
+  border-top: 1px solid #eeeaf2;
+}
+
+.categoryPanel,
+.recentPanel {
+  min-height: 330px;
+}
+
+.categoryRow {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.categoryRow div > i {
+  display: block;
+  height: 5px;
+  margin-top: 7px;
+  overflow: hidden;
+  background: #eeeaf2;
+  border-radius: 999px;
+}
+
+.categoryRow div > i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.categoryRow > span:last-child {
+  text-align: right;
+}
+
+.categoryRow > span:last-child b,
+.categoryRow > span:last-child small {
+  display: block;
+}
+
+.categoryRow > span:last-child b {
+  color: #554b62;
+  font-size: 0.78rem;
+}
+
+.transactionRow {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.editButton,
+.deleteButton {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  place-items: center;
+  color: #a69fac;
+  background: #f5f2f7;
+  border: 0;
+  border-radius: 8px;
+  font-size: 1.1rem;
+}
+
+.editButton:hover {
+  color: #5b38b8;
+  background: #eee9fb;
+}
+
+.deleteButton:hover {
+  color: #c83d4e;
+  background: #fff0f2;
+}
+
+.editFlowNotice {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  color: #5a4d66;
+  background: #f1edfb;
+  border: 1px solid #e0d7f5;
+  border-radius: 11px;
+}
+
+.editFlowNotice strong {
+  display: block;
+  color: #4f2da7;
+  font-size: 0.74rem;
+}
+
+.editFlowNotice p {
+  margin-top: 3px;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.emptyState {
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  align-content: center;
+  color: #837b8d;
+  text-align: center;
+}
+
+.emptyState > span {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 9px;
+  place-items: center;
+  color: #7452cf;
+  background: #eee9fb;
+  border-radius: 17px;
+  font-size: 1.35rem;
+}
+
+.emptyState strong {
+  color: #4f455b;
+}
+
+.emptyState p {
+  max-width: 320px;
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+
+.emptyState button {
+  min-height: 38px;
+  margin-top: 13px;
+  padding: 0 14px;
+  font-size: 0.72rem;
+}
+
+.fullPanel {
+  min-height: 440px;
+}
+
+.compactAction {
+  min-height: 38px;
+  padding: 0 13px;
+  font-size: 0.72rem;
+}
+
+.budgetGrid,
+.accountCards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.budgetCard,
+.accountCard {
+  padding: 17px;
+  background: #f8f6fa;
+  border: 1px solid #ebe6ef;
+  border-radius: 14px;
+}
+
+.budgetCard > div {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+}
+
+.budgetCard div > span strong,
+.budgetCard div > span small {
+  display: block;
+}
+
+.budgetCard div > span strong {
+  color: #443a50;
+  font-size: 0.8rem;
+}
+
+.budgetCard div > span small {
+  color: #8d8497;
+  font-size: 0.66rem;
+}
+
+.budgetCard > div > b {
+  color: #655a72;
+  font-size: 0.75rem;
+}
+
+.budgetCard > i {
+  display: block;
+  height: 8px;
+  margin-top: 15px;
+  overflow: hidden;
+  background: #e9e4ee;
+  border-radius: 999px;
+}
+
+.budgetCard > i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.budgetCard > i .overBudget {
+  background: #d64c5c !important;
+}
+
+.budgetCard p {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: #857d90;
+  font-size: 0.64rem;
+}
+
+.accountCard {
+  display: flex;
+  gap: 14px;
+  border-top: 4px solid #6f4bd8;
+}
+
+.accountCard div {
+  display: grid;
+}
+
+.accountCard small {
+  color: #8a8293;
+  font-size: 0.65rem;
+}
+
+.accountCard strong {
+  color: #413747;
+  font-size: 0.86rem;
+}
+
+.accountCard b {
+  margin-top: 8px;
+  color: #2e2638;
+  font-size: 1.15rem;
+}
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  padding: 22px;
+  overflow-y: auto;
+  background: rgba(28, 20, 39, 0.58);
+  place-items: center;
+  backdrop-filter: blur(8px);
+}
+
+.modal {
+  width: min(640px, 100%);
+  padding: 25px;
+  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 20px;
+  box-shadow: 0 28px 90px rgba(21, 12, 35, 0.36);
+}
+
+.smallModal {
+  width: min(480px, 100%);
+}
+
+.modalHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.modalHeading h3 {
+  margin-top: 3px;
+  color: #332a40;
+  font-size: 1.3rem;
+}
+
+.modalHeading > button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #756d80;
+  background: #f3f0f6;
+  border: 0;
+  border-radius: 10px;
+  font-size: 1.25rem;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 4px;
+  background: #eeeaf2;
+  border-radius: 11px;
+}
+
+.segmented button {
+  min-height: 38px;
+  color: #7b7384;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.segmented .segmentActive {
+  color: #4f2da7;
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(48, 31, 71, 0.08);
+}
+
+.currencyInputBlock {
+  margin-bottom: 16px;
+}
+
+.currencyInputBlock > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #837b90;
+  font-size: 0.63rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.currencyInputSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.currencyInputSwitch button {
+  display: grid;
+  min-height: 58px;
+  padding: 9px 12px;
+  color: #716779;
+  text-align: left;
+  background: #faf9fb;
+  border: 1px solid #ded7e4;
+  border-radius: 11px;
+}
+
+.currencyInputSwitch button strong,
+.currencyInputSwitch button small {
+  display: block;
+}
+
+.currencyInputSwitch button strong {
+  color: #44384f;
+  font-size: 0.88rem;
+}
+
+.currencyInputSwitch button small {
+  margin-top: 2px;
+  color: #8b8294;
+  font-size: 0.64rem;
+}
+
+.currencyInputSwitch .activeInputCurrency {
+  color: #4f2da7;
+  background: #f1edfb;
+  border-color: #7653d5;
+  box-shadow: 0 0 0 3px rgba(111, 75, 216, 0.09);
+}
+
+.currencyInputSwitch .activeInputCurrency strong {
+  color: #4f2da7;
+}
+
+.modal label {
+  display: grid;
+  gap: 6px;
+  color: #615668;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.modal > label + label,
+.modal > label + .saveButton {
+  margin-top: 14px;
+}
+
+.modal input,
+.modal select {
+  width: 100%;
+  min-height: 47px;
+  padding: 0 12px;
+  color: #2f2739;
+  background: #faf9fb;
+  border: 1px solid #ddd6e4;
+  border-radius: 10px;
+  outline: none;
+}
+
+.modal input:focus,
+.modal select:focus {
+  border-color: #7653d5;
+  box-shadow: 0 0 0 3px rgba(111, 75, 216, 0.11);
+}
+
+.modal > label:first-of-type input {
+  min-height: 64px;
+  font-size: 1.45rem;
+  font-weight: 750;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.exchangeBox {
+  display: grid;
+  gap: 8px;
+  margin-top: 15px;
+  padding: 15px;
+  background: #f1edfb;
+  border: 1px solid #e2d9f7;
+  border-radius: 12px;
+}
+
+.exchangeBox p,
+.formHint {
+  color: #756c80;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.inlineLink {
+  margin-top: 13px;
+  padding: 0;
+  color: #6745ca;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.formHint {
+  margin-top: 10px;
+}
+
+.twoSegments {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.categoryModal {
+  width: min(920px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.categoryToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 15px;
+  color: #776e82;
+  font-size: 0.7rem;
+}
+
+.categoryToolbar label {
+  display: flex;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.categoryToolbar input {
+  width: 16px;
+  min-height: 16px;
+}
+
+.categoryManagerGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+  gap: 18px;
+}
+
+.categoryTree {
+  display: grid;
+  max-height: 560px;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.categoryTreeGroup {
+  overflow: hidden;
+  background: #faf9fb;
+  border: 1px solid #e8e2ed;
+  border-radius: 13px;
+}
+
+.categoryTreeRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+}
+
+.categoryTreeRow strong {
+  color: #403648;
+  font-size: 0.78rem;
+}
+
+.categoryTreeRow > button {
+  padding: 5px 7px;
+  color: #766b82;
+  background: #f0ecf4;
+  border: 0;
+  border-radius: 7px;
+  font-size: 0.64rem;
+  font-weight: 750;
+}
+
+.childCategory {
+  padding-left: 34px;
+  border-top: 1px solid #eee9f1;
+}
+
+.archivedCategory {
+  opacity: 0.5;
+}
+
+.addChildButton {
+  width: 100%;
+  padding: 9px 12px 10px 60px;
+  color: #6745ca;
+  text-align: left;
+  background: #f5f1fb;
+  border: 0;
+  border-top: 1px solid #ebe4f2;
+  font-size: 0.65rem;
+  font-weight: 780;
+}
+
+.categoryForm {
+  align-self: start;
+  padding: 18px;
+  background: #f8f6fa;
+  border: 1px solid #e8e2ed;
+  border-radius: 14px;
+}
+
+.categoryForm > span {
+  color: #837b90;
+  font-size: 0.63rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.categoryForm h4 {
+  margin: 3px 0 15px;
+  color: #3e3448;
+}
+
+.categoryForm > label + label {
+  margin-top: 12px;
+}
+
+.categoryForm input[type="color"] {
+  padding: 6px;
+}
+
+.resetButton {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  color: #6d6278;
+  background: transparent;
+  border: 0;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.saveButton {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 20px;
+}
+
+@media (max-width: 840px) {
+  .financeShell {
+    padding: 28px 24px 38px;
+  }
+
+  .overviewGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .reportControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .monthPicker {
+    width: 100%;
+    max-width: none;
+  }
+
+  .categoryManagerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryStrip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .summaryStrip article:nth-child(2) {
+    border-right: 0;
+  }
+
+  .summaryStrip article:nth-child(-n + 2) {
+    border-bottom: 1px solid #eeeaf2;
+  }
+
+  .categoryPanel,
+  .recentPanel,
+  .accountsPanel,
+  .flowPanel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .financeShell {
+    padding: 22px 15px 30px;
+  }
+
+  .financeTopbar {
+    align-items: flex-end;
+  }
+
+  .financeTopbar h2 {
+    font-size: 1.8rem;
+  }
+
+  .financeTopbar p {
+    font-size: 0.7rem;
+  }
+
+  .primaryAction {
+    width: 48px;
+    padding: 0;
+    justify-content: center;
+    overflow: hidden;
+    color: transparent;
+    white-space: nowrap;
+  }
+
+  .primaryAction span {
+    color: #fff;
+  }
+
+  .tabList {
+    overflow-x: auto;
+    grid-template-columns: repeat(4, minmax(96px, 1fr));
+  }
+
+  .summaryStrip strong {
+    font-size: 0.92rem;
+  }
+
+  .panel {
+    padding: 17px;
+  }
+
+  .budgetGrid,
+  .accountCards,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .panelHeading {
+    align-items: flex-start;
+  }
+
+  .headingActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .currencySwitch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .categoryToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .categoryTreeRow {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .categoryTreeRow > button:last-child {
+    grid-column: 3;
+  }
+
+  .transactionRow {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .transactionRow .rowActions {
+    grid-column: 2 / 4;
+    justify-self: end;
+  }
+
+  .modalBackdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .modal,
+  .smallModal {
+    max-height: 92vh;
+    overflow-y: auto;
+    border-radius: 22px 22px 0 0;
+  }
+}

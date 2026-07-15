@@ -30,7 +30,7 @@ test("server-renders the correct application entry screen", async () => {
 
   const html = await response.text();
   assert.match(html, /<html lang="vi">/i);
-  assert.match(html, /<title>Tính Lãi Suất Tiết Kiệm<\/title>/i);
+  assert.match(html, /<title>MoneyMind – Tiết kiệm và Thu chi<\/title>/i);
   const cloudEntryRendered = /Đang mở sổ tiết kiệm của bạn/i.test(html);
 
   if (cloudEntryRendered) {
@@ -205,20 +205,63 @@ test("includes a versioned local backup and restore flow", async () => {
     "utf8",
   );
 
-  assert.match(page, /const BACKUP_FORMAT_VERSION = 2/);
-  assert.match(page, /version !== 1 && version !== BACKUP_FORMAT_VERSION/);
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 4/);
+  assert.match(page, /\[1, 2, 3, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
   assert.match(page, /function parseBackupPayload\(/);
   assert.match(page, /cashLedger: CashLedgerEntry\[\]/);
+  assert.match(page, /finance: FinanceState/);
   assert.match(page, /URL\.createObjectURL\(blob\)/);
   assert.match(page, /accept="application\/json,\.json"/);
   assert.match(page, /Khôi phục từ tệp/);
-  assert.match(page, /bao gồm khoản gửi và ví tiền, sẽ bị thay thế/);
+  assert.match(page, /Toàn bộ dữ liệu hiện có trên thiết bị này sẽ bị thay thế/);
 });
 
-test("includes invite-only cloud accounts with per-user database isolation", async () => {
-  const [page, client, schema, envExample] = await Promise.all([
+test("includes a separate income and expense management workspace", async () => {
+  const [page, manager, finance] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/finance-manager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/finance.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /type AppWorkspace = "savings" \| "finance"/);
+  assert.match(page, /<FinanceManager state=\{finance\} onChange=\{setFinance\}/);
+  assert.match(manager, /Tổng quan/);
+  assert.match(manager, /Giao dịch/);
+  assert.match(manager, /Ngân sách/);
+  assert.match(manager, /Tài khoản/);
+  assert.match(manager, /Thêm giao dịch/);
+  assert.match(manager, /Khoản thu/);
+  assert.match(manager, /Khoản chi/);
+  assert.match(manager, /Chuyển khoản/);
+  assert.match(manager, /Số tiền thực nhận/);
+  assert.match(manager, /Tỷ giá thực tế/);
+  assert.match(manager, /ĐƠN VỊ NHẬP/);
+  assert.match(manager, /useState<FinanceCurrency>\("KRW"\)/);
+  assert.match(manager, /formatFinanceAmountInput\(event\.target\.value\)/);
+  assert.match(manager, /Quản lý nhóm/);
+  assert.match(manager, /Thêm nhóm con/);
+  assert.match(manager, /function editTransaction/);
+  assert.match(manager, /hoàn lại toàn bộ tác động của giao dịch cũ/);
+  assert.match(manager, /Lưu thay đổi/);
+  assert.match(finance, /function calculateAccountBalance/);
+  assert.match(finance, /function saveFinanceTransaction/);
+  assert.match(finance, /function formatFinanceAmountInput/);
+  assert.match(finance, /transaction\.toAccountId === account\.id/);
+  assert.match(finance, /transaction\.toAmount \?\? transaction\.amount/);
+  assert.match(finance, /currency: normalizeCurrency\(value\.currency, "VND"\)/);
+  assert.match(finance, /const isEmptyLegacyDefault/);
+  assert.match(finance, /account\.currency === "KRW"/);
+  assert.match(finance, /function repairCategoryTree/);
+  assert.match(finance, /parentId\?: string/);
+  assert.match(finance, /function summarizeFinanceMonth/);
+  assert.match(finance, /function normalizeFinanceState/);
+});
+
+test("includes invite-only realtime cloud accounts with per-user database isolation", async () => {
+  const [page, client, realtime, schema, envExample] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase-rest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase-realtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
@@ -229,14 +272,23 @@ test("includes invite-only cloud accounts with per-user database isolation", asy
   assert.match(page, /Đưa dữ liệu này lên tài khoản/);
   assert.match(page, /createCloudAppState\(/);
   assert.match(page, /writeCloudState\(activeSession, state\)/);
+  assert.match(page, /subscribeToCloudState<unknown>/);
+  assert.match(page, /skipNextCloudWriteRef/);
+  assert.match(page, /Realtime đang hoạt động/);
   assert.match(client, /create_user: false/);
   assert.match(client, /grant_type=password/);
   assert.match(client, /grant_type=refresh_token/);
   assert.match(client, /on_conflict/);
   assert.doesNotMatch(client, /service[_-]?role/i);
+  assert.match(realtime, /setAuth\(session\.accessToken\)/);
+  assert.match(realtime, /"postgres_changes"/);
+  assert.match(realtime, /user_id=eq/);
+  assert.match(realtime, /table: "user_app_state"/);
   assert.match(schema, /alter table public\.user_app_state enable row level security/i);
   assert.match(schema, /\(select auth\.uid\(\)\) = user_id/);
   assert.match(schema, /to authenticated/);
+  assert.match(schema, /alter publication supabase_realtime add table public\.user_app_state/i);
+  assert.match(schema, /set_user_app_state_updated_at/i);
   assert.match(envExample, /NEXT_PUBLIC_SUPABASE_URL/);
   assert.match(envExample, /NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY/);
 });

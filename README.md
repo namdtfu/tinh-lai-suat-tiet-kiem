@@ -1,7 +1,21 @@
-# Tính Lãi Suất Tiết Kiệm
+# MoneyMind
 
-Ứng dụng web tiếng Việt để quản lý khoản gửi tiết kiệm, tính lãi dự kiến,
-theo dõi tiến độ đến ngày đáo hạn và lưu lịch sử các kỳ tái đầu tư.
+Ứng dụng quản lý tài chính cá nhân bằng tiếng Việt, gồm hai không gian độc lập
+trong cùng một tài khoản:
+
+- **Tiết kiệm:** quản lý khoản gửi, tính lãi dự kiến, theo dõi ngày đáo hạn và
+  lịch sử các kỳ tái đầu tư.
+- **Thu chi:** quản lý tài khoản KRW/VND, khoản thu, khoản chi, chuyển đổi tiền
+  tệ, ngân sách theo tháng và báo cáo theo nhóm cha–con tùy chỉnh.
+
+Mỗi tài khoản Thu chi có một đơn vị tiền cố định. Khi chuyển giữa KRW và VND,
+giao dịch lưu riêng số tiền gửi và số tiền thực nhận để số dư hai bên luôn đúng;
+ứng dụng không cộng trực tiếp các loại tiền khác nhau. Danh mục giao dịch có thể
+thêm, sửa, ẩn hoặc khôi phục mà không làm mất lịch sử đã ghi.
+
+Giao dịch có thể chỉnh sửa sau khi lưu. Khi cập nhật, ứng dụng thay thế giao
+dịch cũ rồi tính lại số dư từ lịch sử, vì vậy số tiền cũ được hoàn lại đúng tài
+khoản trước khi số tiền, tài khoản hoặc loại giao dịch mới được áp dụng.
 
 ## Chạy cục bộ
 
@@ -31,7 +45,13 @@ khoản chỉ được đọc và ghi dòng dữ liệu của chính mình nhờ
 
 Khi một tài khoản đăng nhập lần đầu mà thiết bị đang có dữ liệu cục bộ, ứng
 dụng sẽ yêu cầu xác nhận trước khi đưa dữ liệu lên database. Người dùng cũng có
-thể tải bản sao lưu JSON trước khi chuyển.
+thể tải bản sao lưu JSON chứa cả dữ liệu tiết kiệm và thu chi trước khi chuyển.
+
+Sau khi chạy bản `supabase/schema.sql` mới nhất, bảng dữ liệu được thêm vào
+publication `supabase_realtime`. Mọi thiết bị đang mở cùng tài khoản sẽ nhận thay
+đổi ngay mà không cần tải lại trang. RLS vẫn giới hạn luồng realtime theo
+`user_id`; nếu hai thiết bị cùng sửa trong lúc một thiết bị đang chờ ghi, lần ghi
+hoàn tất sau cùng là dữ liệu được giữ lại.
 
 ## Triển khai
 

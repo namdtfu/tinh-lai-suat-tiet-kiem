@@ -8,6 +8,23 @@ create table if not exists public.user_app_state (
   updated_at timestamptz not null default now()
 );
 
+create or replace function public.set_user_app_state_updated_at()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_user_app_state_updated_at on public.user_app_state;
+create trigger set_user_app_state_updated_at
+before insert or update on public.user_app_state
+for each row execute function public.set_user_app_state_updated_at();
+
 alter table public.user_app_state enable row level security;
 
 revoke all on table public.user_app_state from anon;
@@ -44,3 +61,20 @@ using ((select auth.uid()) = user_id);
 
 create index if not exists user_app_state_updated_at_idx
 on public.user_app_state (updated_at desc);
+
+-- Realtime Postgres Changes only emits events for tables in this publication.
+do $$
+begin
+  if exists (
+    select 1 from pg_publication where pubname = 'supabase_realtime'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'user_app_state'
+  ) then
+    execute 'alter publication supabase_realtime add table public.user_app_state';
+  end if;
+end;
+$$;
