@@ -2843,6 +2843,254 @@ footer {
   font-size: 0.72rem;
 }
 
+.action-center {
+  padding: 28px 52px;
+  background: linear-gradient(135deg, #fbf9ff, #f5fbf8);
+  border-bottom: 1px solid var(--line);
+}
+
+.action-center-heading,
+.settlement-heading,
+.settlement-actions,
+.settlement-actual-summary,
+.item-status-line,
+.account-link-note {
+  display: flex;
+  align-items: center;
+}
+
+.action-center-heading {
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.action-center-heading h2 {
+  margin-top: 4px;
+  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
+}
+
+.reminder-count {
+  padding: 7px 11px;
+  color: #746b7d;
+  background: #fff;
+  border: 1px solid #e4deea;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.reminder-count.active {
+  color: #ad3b4b;
+  background: #fff4f5;
+  border-color: #f2cdd2;
+}
+
+.reminder-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reminder-summary article {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid #e7e1ec;
+  border-radius: 13px;
+}
+
+.reminder-summary span {
+  color: #766e7f;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.reminder-summary strong {
+  font-size: 1.55rem;
+}
+
+.reminder-summary .urgent { color: #bd3f51; border-color: #f1c7ce; }
+.reminder-summary .soon { color: #b77a17; border-color: #efdcae; }
+.reminder-summary .budget { color: #5c3eb3; border-color: #d8cff0; }
+
+.reminder-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.reminder-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  background: #fff;
+  border: 1px solid #e8e2ed;
+  border-radius: 12px;
+}
+
+.reminder-list strong,
+.reminder-list small { display: block; }
+.reminder-list small { margin-top: 2px; color: var(--muted); font-size: 0.72rem; }
+.reminder-list button,
+.account-link-note button {
+  padding: 7px 10px;
+  color: var(--violet);
+  background: var(--violet-pale);
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.73rem;
+  font-weight: 800;
+}
+
+.reminder-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  font-weight: 900;
+}
+.reminder-icon.urgent { color: #b73346; background: #fff0f2; }
+.reminder-icon.soon { color: #9a6814; background: #fff7df; }
+.reminder-icon.budget { color: #5d3bb5; background: #f1edfb; }
+
+.reminder-empty {
+  margin-top: 12px;
+  padding: 12px 14px;
+  color: #557269;
+  background: #eef9f4;
+  border-radius: 11px;
+  font-size: 0.8rem;
+}
+
+.account-link-note {
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  color: #665c70;
+  background: #f8f5fc;
+  border: 1px solid #e7dff0;
+  border-radius: 11px;
+  font-size: 0.76rem;
+}
+
+.account-link-note > span { color: var(--violet); font-weight: 900; }
+.account-link-note p { flex: 1; }
+
+.btn-settle {
+  padding: 8px 11px;
+  color: #177554;
+  background: #e9f7f1;
+  border: 1px solid #c5e8d9;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.item-status-line {
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 6px;
+}
+
+.item-status-line small { color: var(--muted); font-size: 0.7rem; }
+
+.status-badge {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.status-badge.active { color: #177554; background: #e9f7f1; }
+.status-badge.matured { color: #a4441d; background: #fff0e8; }
+.status-badge.settled { color: #655c6f; background: #eeeaf1; }
+
+.settled-result-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 22px 18px;
+  overflow: hidden;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 13px;
+}
+
+.settled-result-strip > div {
+  padding: 18px;
+  background: linear-gradient(135deg, #5f5669, #766a82);
+}
+
+.settled-result-strip span,
+.settled-result-strip small,
+.settled-result-strip strong { display: block; }
+.settled-result-strip span { color: rgba(255, 255, 255, 0.7); font-size: 0.68rem; font-weight: 800; }
+.settled-result-strip strong { margin: 5px 0 2px; font-size: 1.2rem; }
+.settled-result-strip small { color: rgba(255, 255, 255, 0.68); font-size: 0.7rem; }
+
+.settlement-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(32, 24, 40, 0.58);
+  backdrop-filter: blur(5px);
+}
+
+.settlement-modal {
+  width: min(620px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 24px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(28, 20, 36, 0.28);
+}
+
+.settlement-heading { justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.settlement-heading span { color: var(--violet); font-size: 0.68rem; font-weight: 900; letter-spacing: 0.08em; }
+.settlement-heading h3 { margin-top: 4px; font-size: 1.25rem; }
+.settlement-heading button { width: 32px; height: 32px; color: #7a7182; background: #f4f1f6; border: 0; border-radius: 9px; font-size: 1.2rem; }
+
+.settlement-projection {
+  padding: 14px 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #6645bc, #8a68d6);
+  border-radius: 13px;
+}
+.settlement-projection span,
+.settlement-projection small,
+.settlement-projection strong { display: block; }
+.settlement-projection span,
+.settlement-projection small { color: rgba(255, 255, 255, 0.72); font-size: 0.72rem; }
+.settlement-projection strong { margin: 4px 0; font-size: 1.35rem; }
+.settlement-warning { margin-top: 10px; padding: 10px 12px; color: #95431f; background: #fff3e8; border-radius: 10px; font-size: 0.75rem; }
+
+.settlement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+.settlement-grid label { display: grid; gap: 7px; color: #665d6e; font-size: 0.75rem; font-weight: 800; }
+.settlement-grid input,
+.settlement-grid select { width: 100%; min-height: 43px; padding: 9px 11px; border: 1px solid #ddd6e4; border-radius: 9px; background: #fff; }
+.settlement-account-field { grid-column: 1 / -1; }
+.settlement-actual-summary { justify-content: space-between; gap: 12px; margin-top: 14px; padding: 12px 14px; color: #5f5668; background: #f7f4fa; border-radius: 10px; font-size: 0.78rem; }
+.settlement-actual-summary strong { color: #177554; }
+.settlement-actions { justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
 @media (max-width: 960px) {
   .hero,
   .form-section,
@@ -2850,6 +3098,7 @@ footer {
   .cashflow-section,
   .goal-section,
   .backup-section,
+  .action-center,
   .list-section {
     padding-right: 32px;
     padding-left: 32px;
@@ -2914,8 +3163,40 @@ footer {
   .cashflow-section,
   .goal-section,
   .backup-section,
+  .action-center,
   .list-section {
     padding: 34px 22px;
+  }
+
+  .reminder-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reminder-list article {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .reminder-list article > button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .account-link-note {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .account-link-note button {
+    margin-left: 30px;
+  }
+
+  .settled-result-strip,
+  .settlement-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settlement-account-field {
+    grid-column: auto;
   }
 
   .form-grid,
@@ -3146,6 +3427,21 @@ footer {
 
   .rate-add-row {
     flex-direction: column;
+  }
+
+  .reminder-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .action-center-heading,
+  .settlement-actual-summary,
+  .settlement-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settlement-actions button {
+    width: 100%;
   }
 
   .savings-details {

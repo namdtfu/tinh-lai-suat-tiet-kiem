@@ -1,6 +1,11 @@
 export type FinanceAccountType = "cash" | "bank" | "ewallet";
 export type FinanceCategoryKind = "income" | "expense";
-export type FinanceTransactionType = "income" | "expense" | "transfer";
+export type FinanceTransactionType =
+  | "income"
+  | "expense"
+  | "transfer"
+  | "savings-deposit"
+  | "savings-settlement";
 export type FinanceCurrency = "KRW" | "VND";
 
 export type FinanceAccount = {
@@ -32,6 +37,7 @@ export type FinanceTransaction = {
   categoryId?: string;
   toAccountId?: string;
   toAmount?: number;
+  linkedSavingsId?: number;
   note: string;
   createdAt: string;
   updatedAt?: string;
@@ -107,6 +113,8 @@ const TRANSACTION_TYPES = new Set<FinanceTransactionType>([
   "income",
   "expense",
   "transfer",
+  "savings-deposit",
+  "savings-settlement",
 ]);
 const AMOUNT_INPUT_FORMATTER = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 0,
@@ -241,6 +249,7 @@ function normalizeTransaction(
   const accountId = cleanText(value.accountId, "", 100);
   const categoryId = cleanText(value.categoryId, "", 100);
   const toAccountId = cleanText(value.toAccountId, "", 100);
+  const linkedSavingsId = Number(value.linkedSavingsId);
   if (
     !id ||
     !TRANSACTION_TYPES.has(type as FinanceTransactionType) ||
@@ -262,6 +271,11 @@ function normalizeTransaction(
       Number.isFinite(parsedToAmount) && parsedToAmount > 0
         ? parsedToAmount
         : amount;
+  } else if (
+    type === "savings-deposit" ||
+    type === "savings-settlement"
+  ) {
+    if (!Number.isFinite(linkedSavingsId) || linkedSavingsId <= 0) return null;
   } else if (!categoryId || !categoryIds.has(categoryId)) {
     return null;
   }
@@ -275,6 +289,9 @@ function normalizeTransaction(
     ...(categoryId ? { categoryId } : {}),
     ...(toAccountId ? { toAccountId } : {}),
     ...(toAmount ? { toAmount } : {}),
+    ...(type === "savings-deposit" || type === "savings-settlement"
+      ? { linkedSavingsId }
+      : {}),
     note: cleanText(value.note, "", 240),
     createdAt:
       typeof value.createdAt === "string"
@@ -443,6 +460,18 @@ export function calculateAccountBalance(
     }
     if (transaction.type === "expense" && transaction.accountId === account.id) {
       return balance - transaction.amount;
+    }
+    if (
+      transaction.type === "savings-deposit" &&
+      transaction.accountId === account.id
+    ) {
+      return balance - transaction.amount;
+    }
+    if (
+      transaction.type === "savings-settlement" &&
+      transaction.accountId === account.id
+    ) {
+      return balance + transaction.amount;
     }
     if (transaction.type === "transfer") {
       if (transaction.accountId === account.id) return balance - transaction.amount;

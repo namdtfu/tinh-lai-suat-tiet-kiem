@@ -205,11 +205,12 @@ test("includes a versioned local backup and restore flow", async () => {
     "utf8",
   );
 
-  assert.match(page, /const BACKUP_FORMAT_VERSION = 4/);
-  assert.match(page, /\[1, 2, 3, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 5/);
+  assert.match(page, /\[1, 2, 3, 4, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
   assert.match(page, /function parseBackupPayload\(/);
   assert.match(page, /cashLedger: CashLedgerEntry\[\]/);
   assert.match(page, /finance: FinanceState/);
+  assert.match(page, /goal: GoalSettings/);
   assert.match(page, /URL\.createObjectURL\(blob\)/);
   assert.match(page, /accept="application\/json,\.json"/);
   assert.match(page, /Khôi phục từ tệp/);
@@ -238,6 +239,8 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Khoản thu/);
   assert.match(manager, /Khoản chi/);
   assert.match(manager, /Chuyển khoản/);
+  assert.match(manager, /Gửi tiết kiệm/);
+  assert.match(manager, /Tất toán tiết kiệm/);
   assert.match(manager, /Số tiền thực nhận/);
   assert.match(manager, /Tỷ giá thực tế/);
   assert.match(manager, /ĐƠN VỊ NHẬP/);
@@ -260,6 +263,8 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(finance, /function formatFinanceAmountInput/);
   assert.match(finance, /transaction\.toAccountId === account\.id/);
   assert.match(finance, /transaction\.toAmount \?\? transaction\.amount/);
+  assert.match(finance, /transaction\.type === "savings-deposit"/);
+  assert.match(finance, /transaction\.type === "savings-settlement"/);
   assert.match(finance, /currency: normalizeCurrency\(value\.currency, "VND"\)/);
   assert.match(finance, /const isEmptyLegacyDefault/);
   assert.match(finance, /account\.currency === "KRW"/);
@@ -273,6 +278,23 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(finance, /function saveFinanceAccount/);
   assert.match(finance, /function deleteFinanceAccount/);
   assert.match(finance, /function normalizeFinanceState/);
+});
+
+test("includes linked savings lifecycle, settlement, and action reminders", async () => {
+  const page = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(page, /type SavingsStatus = "active" \| "settled"/);
+  assert.match(page, /maturityInstruction: MaturityInstruction/);
+  assert.match(page, /fundingAccountId/);
+  assert.match(page, /settlementAccountId/);
+  assert.match(page, /function handleSettlement/);
+  assert.match(page, /GHI NHẬN THỰC TẾ/);
+  assert.match(page, /Việc cần chú ý hôm nay/);
+  assert.match(page, /Ngân sách ≥ 80%/);
+  assert.match(page, /transaction\.linkedSavingsId !== id/);
 });
 
 test("includes invite-only realtime cloud accounts with per-user database isolation", async () => {

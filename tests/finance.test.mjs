@@ -496,3 +496,38 @@ test("date validation is stable in Korea timezone and rejects impossible dates",
 
   assert.deepEqual(normalized.transactions.map((item) => item.id), ["valid"]);
 });
+
+test("linked savings movements update account balance without changing income or expense", () => {
+  const savingsDeposit = transaction({
+    id: "savings-deposit",
+    type: "savings-deposit",
+    amount: 60_000,
+    accountId: vndBank.id,
+    categoryId: undefined,
+    linkedSavingsId: 101,
+  });
+  const savingsSettlement = transaction({
+    id: "savings-settlement",
+    type: "savings-settlement",
+    amount: 63_000,
+    accountId: vndBank.id,
+    categoryId: undefined,
+    linkedSavingsId: 101,
+  });
+  const state = normalizeFinanceState({
+    accounts: [vndBank],
+    categories: [],
+    budgets: [],
+    transactions: [savingsDeposit, savingsSettlement],
+  });
+
+  assert.equal(state.transactions.length, 2);
+  assert.equal(calculateAccountBalance(vndBank, state.transactions), 103_000);
+  assert.deepEqual(summarizeFinanceMonth(state, "2026-07", "VND"), {
+    currency: "VND",
+    income: 0,
+    expense: 0,
+    net: 0,
+    transactionCount: 2,
+  });
+});

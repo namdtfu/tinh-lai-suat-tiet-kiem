@@ -14,7 +14,6 @@ import {
   FinanceCurrency,
   FinanceDailyTrendItem,
   FinanceState,
-  FinanceTransactionType,
   formatFinanceAmountInput,
   getCategoryPath,
   getCategorySpent,
@@ -31,7 +30,8 @@ import {
 import styles from "./finance-manager.module.css";
 
 type FinanceTab = "overview" | "transactions" | "budgets" | "accounts";
-type TransactionFilter = "all" | FinanceTransactionType;
+type EditableFinanceTransactionType = "income" | "expense" | "transfer";
+type TransactionFilter = "all" | EditableFinanceTransactionType | "savings";
 
 type FinanceManagerProps = {
   state: FinanceState;
@@ -241,7 +241,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
   const [editingBudgetId, setEditingBudgetId] = useState("");
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [transactionType, setTransactionType] =
-    useState<FinanceTransactionType>("expense");
+    useState<EditableFinanceTransactionType>("expense");
   const [transactionCurrency, setTransactionCurrency] =
     useState<FinanceCurrency>("KRW");
   const [transactionAmount, setTransactionAmount] = useState("");
@@ -344,7 +344,11 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
         .filter(
           (transaction) =>
             monthKeyFromIso(transaction.date) === selectedMonth &&
-            (transactionFilter === "all" || transaction.type === transactionFilter),
+            (transactionFilter === "all" ||
+              (transactionFilter === "savings"
+                ? transaction.type === "savings-deposit" ||
+                  transaction.type === "savings-settlement"
+                : transaction.type === transactionFilter)),
         )
         .sort(
           (left, right) =>
@@ -371,7 +375,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
       ? parsedDestinationAmount / parsedSourceAmount
       : 0;
 
-  function openTransaction(type: FinanceTransactionType = "expense") {
+  function openTransaction(type: EditableFinanceTransactionType = "expense") {
     const preferredAccount =
       state.accounts.find((account) => account.currency === "KRW") ??
       state.accounts[0];
@@ -403,6 +407,12 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
   function editTransaction(
     transaction: FinanceState["transactions"][number],
   ) {
+    if (
+      transaction.type === "savings-deposit" ||
+      transaction.type === "savings-settlement"
+    ) {
+      return;
+    }
     const account = state.accounts.find(
       (item) => item.id === transaction.accountId,
     );
@@ -716,6 +726,12 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
   }
 
   function getTransactionMeta(transaction: FinanceState["transactions"][number]) {
+    if (transaction.type === "savings-deposit") {
+      return { icon: "↗", name: "Gửi tiết kiệm", detail: transaction.note };
+    }
+    if (transaction.type === "savings-settlement") {
+      return { icon: "✓", name: "Tất toán tiết kiệm", detail: transaction.note };
+    }
     if (transaction.type === "transfer") {
       const destination = state.accounts.find(
         (account) => account.id === transaction.toAccountId,
@@ -742,6 +758,12 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
       (item) => item.id === transaction.accountId,
     );
     if (!account) return "";
+    if (transaction.type === "savings-deposit") {
+      return `−${formatMoney(transaction.amount, account.currency)}`;
+    }
+    if (transaction.type === "savings-settlement") {
+      return `+${formatMoney(transaction.amount, account.currency)}`;
+    }
     if (transaction.type !== "transfer") {
       const sign = transaction.type === "income" ? "+" : "−";
       return `${sign}${formatMoney(transaction.amount, account.currency)}`;
@@ -950,7 +972,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
                   return <div key={transaction.id} className={styles.transactionRow}>
                     <span className={styles.roundIcon}>{meta.icon}</span>
                     <div><strong>{meta.name}</strong><small>{formatShortDate(transaction.date)}{meta.detail ? ` · ${meta.detail}` : ""}{transaction.updatedAt ? " · Đã sửa" : ""}</small></div>
-                    <b className={transaction.type === "income" ? styles.income : transaction.type === "expense" ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
+                    <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
                   </div>;
                 })}
               </div>
@@ -1071,7 +1093,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
                 Quản lý nhóm
               </button>
               <select value={transactionFilter} onChange={(event) => setTransactionFilter(event.target.value as TransactionFilter)} aria-label="Lọc giao dịch">
-                <option value="all">Tất cả</option><option value="income">Khoản thu</option><option value="expense">Khoản chi</option><option value="transfer">Chuyển khoản</option>
+                <option value="all">Tất cả</option><option value="income">Khoản thu</option><option value="expense">Khoản chi</option><option value="transfer">Chuyển khoản</option><option value="savings">Tiết kiệm</option>
               </select>
             </div>
           </div>
@@ -1083,11 +1105,15 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
                 return <div key={transaction.id} className={styles.transactionRow}>
                   <span className={styles.roundIcon}>{meta.icon}</span>
                   <div><strong>{meta.name}</strong><small>{formatShortDate(transaction.date)} · {transaction.note || account?.name}{transaction.updatedAt ? " · Đã sửa" : ""}</small></div>
-                  <b className={transaction.type === "income" ? styles.income : transaction.type === "expense" ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
-                  <div className={styles.rowActions}>
-                    <button className={styles.editButton} type="button" onClick={() => editTransaction(transaction)} aria-label={`Sửa giao dịch ${meta.name}`}>✎</button>
-                    <button className={styles.deleteButton} type="button" onClick={() => deleteTransaction(transaction.id)} aria-label={`Xóa giao dịch ${meta.name}`}>×</button>
-                  </div>
+                  <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
+                  {transaction.type === "savings-deposit" || transaction.type === "savings-settlement" ? (
+                    <span className={styles.systemEntry}>Tự động</span>
+                  ) : (
+                    <div className={styles.rowActions}>
+                      <button className={styles.editButton} type="button" onClick={() => editTransaction(transaction)} aria-label={`Sửa giao dịch ${meta.name}`}>✎</button>
+                      <button className={styles.deleteButton} type="button" onClick={() => deleteTransaction(transaction.id)} aria-label={`Xóa giao dịch ${meta.name}`}>×</button>
+                    </div>
+                  )}
                 </div>;
               })}
             </div>

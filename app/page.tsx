@@ -28,6 +28,7 @@ import FinanceManager from "./finance-manager";
 import {
   createDefaultFinanceState,
   FinanceState,
+  getCategorySpent,
   hasMeaningfulFinanceData,
   normalizeFinanceState,
 } from "@/lib/finance";
@@ -40,7 +41,7 @@ const GOAL_SETTINGS_KEY = "goalSettings";
 const FINANCE_KEY = "financeState";
 const WORKSPACE_KEY = "activeWorkspace";
 const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
-const BACKUP_FORMAT_VERSION = 4;
+const BACKUP_FORMAT_VERSION = 5;
 const MAX_BACKUP_SIZE = 5_000_000;
 const INTEREST_DEDUCTION_RATE = 0.05;
 const AVERAGE_DAYS_PER_MONTH = 365 / 12;
@@ -48,6 +49,8 @@ const MAX_GOAL_MONTHS = 1_200;
 
 type FormMode = "add" | "edit" | "reinvest";
 type AppWorkspace = "savings" | "finance";
+type SavingsStatus = "active" | "settled";
+type MaturityInstruction = "decide-later" | "return" | "reinvest-all";
 
 type SavingsCycle = {
   amount: number;
@@ -68,6 +71,13 @@ type SavingsItem = SavingsCycle & {
   id: number;
   name: string;
   history: SavingsCycle[];
+  bankName?: string;
+  fundingAccountId?: string;
+  settlementAccountId?: string;
+  maturityInstruction: MaturityInstruction;
+  status: SavingsStatus;
+  settledAt?: string;
+  actualSettlementAmount?: number;
 };
 
 type SavingsForm = {
@@ -77,6 +87,22 @@ type SavingsForm = {
   customInterestRate: string;
   term: string;
   startDate: string;
+  bankName: string;
+  fundingAccountId: string;
+  settlementAccountId: string;
+  maturityInstruction: MaturityInstruction;
+};
+
+type GoalSettings = {
+  interestRate: string;
+  monthlyContribution: string;
+  monthlyInterest: string;
+};
+
+type SettlementDraft = {
+  accountId: string;
+  amount: string;
+  date: string;
 };
 
 type CashLedgerEntry = {
@@ -98,6 +124,7 @@ type BackupPayload = {
   interestRates: number[];
   cashLedger: CashLedgerEntry[];
   finance: FinanceState;
+  goal: GoalSettings;
 };
 
 type BackupStatus = {
@@ -107,15 +134,11 @@ type BackupStatus = {
 
 type CloudAppState = {
   cashLedger: CashLedgerEntry[];
-  goal: {
-    interestRate: string;
-    monthlyContribution: string;
-    monthlyInterest: string;
-  };
+  goal: GoalSettings;
   interestRates: number[];
   savings: SavingsItem[];
   finance: FinanceState;
-  schemaVersion: 3;
+  schemaVersion: 4;
 };
 
 type AuthStatus = "checking" | "local" | "signed-in" | "signed-out";
@@ -150,6 +173,10 @@ const emptyForm = (startDate = ""): SavingsForm => ({
   customInterestRate: "",
   term: "",
   startDate,
+  bankName: "",
+  fundingAccountId: "",
+  settlementAccountId: "",
+  maturityInstruction: "decide-later",
 });
 
 const currencyFormatter = new Intl.NumberFormat("vi-VN", {
@@ -421,6 +448,12 @@ function buildCashflowSchedule(
 function recalculateSavingsItem(item: SavingsItem): SavingsItem {
   return {
     ...item,
+    status: item.status === "settled" ? "settled" : "active",
+    maturityInstruction:
+      item.maturityInstruction === "return" ||
+      item.maturityInstruction === "reinvest-all"
+        ? item.maturityInstruction
+        : "decide-later",
     ...calculateSavings(
       item.amount,
       item.interestRate,
@@ -547,6 +580,26 @@ function normalizeBackupItem(value: unknown): SavingsItem | null {
   const id = Number(value.id);
   const name = typeof value.name === "string" ? value.name.trim() : "";
   const rawHistory = value.history ?? [];
+  const bankName = typeof value.bankName === "string" ? value.bankName.trim() : "";
+  const fundingAccountId =
+    typeof value.fundingAccountId === "string" ? value.fundingAccountId.trim() : "";
+  const settlementAccountId =
+    typeof value.settlementAccountId === "string"
+      ? value.settlementAccountId.trim()
+      : "";
+  const status: SavingsStatus = value.status === "settled" ? "settled" : "active";
+  const maturityInstruction: MaturityInstruction =
+    value.maturityInstruction === "return" ||
+    value.maturityInstruction === "reinvest-all"
+      ? value.maturityInstruction
+      : "decide-later";
+  const settledAt = isValidIsoDate(value.settledAt) ? value.settledAt : undefined;
+  const parsedActualSettlementAmount = Number(value.actualSettlementAmount);
+  const actualSettlementAmount =
+    Number.isFinite(parsedActualSettlementAmount) &&
+    parsedActualSettlementAmount > 0
+      ? parsedActualSettlementAmount
+      : undefined;
 
   if (
     !cycle ||
@@ -565,6 +618,33 @@ function normalizeBackupItem(value: unknown): SavingsItem | null {
     id,
     name: (name || "Khoản tiết kiệm").slice(0, 200),
     history: history as SavingsCycle[],
+    status,
+    maturityInstruction,
+    ...(bankName ? { bankName: bankName.slice(0, 120) } : {}),
+    ...(fundingAccountId ? { fundingAccountId: fundingAccountId.slice(0, 100) } : {}),
+    ...(settlementAccountId
+      ? { settlementAccountId: settlementAccountId.slice(0, 100) }
+      : {}),
+    ...(settledAt ? { settledAt } : {}),
+    ...(actualSettlementAmount ? { actualSettlementAmount } : {}),
+  };
+}
+
+function normalizeGoalSettings(value: unknown): GoalSettings {
+  const goal = isRecord(value) ? value : {};
+  return {
+    monthlyInterest:
+      typeof goal.monthlyInterest === "string"
+        ? goal.monthlyInterest.slice(0, 30)
+        : "",
+    interestRate:
+      typeof goal.interestRate === "string"
+        ? goal.interestRate.slice(0, 20)
+        : "",
+    monthlyContribution:
+      typeof goal.monthlyContribution === "string"
+        ? goal.monthlyContribution.slice(0, 30)
+        : "",
   };
 }
 
@@ -576,11 +656,13 @@ function parseBackupPayload(value: unknown): BackupPayload | null {
     isRecord(value) && version >= 3
       ? value.finance
       : createDefaultFinanceState();
+  const rawGoal =
+    isRecord(value) && version >= 5 ? value.goal : normalizeGoalSettings(null);
 
   if (
     !isRecord(value) ||
     value.app !== BACKUP_APP_ID ||
-    ![1, 2, 3, BACKUP_FORMAT_VERSION].includes(version) ||
+    ![1, 2, 3, 4, BACKUP_FORMAT_VERSION].includes(version) ||
     typeof value.exportedAt !== "string" ||
     !Array.isArray(value.savings) ||
     !Array.isArray(value.interestRates) ||
@@ -615,6 +697,7 @@ function parseBackupPayload(value: unknown): BackupPayload | null {
     interestRates: [...new Set(interestRates)],
     cashLedger: cashLedger as CashLedgerEntry[],
     finance: normalizeFinanceState(rawFinance),
+    goal: normalizeGoalSettings(rawGoal),
   };
 }
 
@@ -622,7 +705,7 @@ function parseCloudAppState(value: unknown): CloudAppState | null {
   const schemaVersion = isRecord(value) ? Number(value.schemaVersion) : 0;
   if (
     !isRecord(value) ||
-    (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3)
+    ![1, 2, 3, 4].includes(schemaVersion)
   ) {
     return null;
   }
@@ -635,30 +718,17 @@ function parseCloudAppState(value: unknown): CloudAppState | null {
     interestRates: value.interestRates,
     cashLedger: value.cashLedger,
     finance: schemaVersion >= 2 ? value.finance : createDefaultFinanceState(),
+    goal: value.goal,
   });
   if (!backup) return null;
 
-  const goal = isRecord(value.goal) ? value.goal : {};
-  const monthlyInterest =
-    typeof goal.monthlyInterest === "string" ? goal.monthlyInterest : "";
-  const interestRate =
-    typeof goal.interestRate === "string" ? goal.interestRate : "";
-  const monthlyContribution =
-    typeof goal.monthlyContribution === "string"
-      ? goal.monthlyContribution
-      : "";
-
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     savings: backup.savings,
     interestRates: backup.interestRates,
     cashLedger: backup.cashLedger,
     finance: backup.finance,
-    goal: {
-      monthlyInterest: monthlyInterest.slice(0, 30),
-      interestRate: interestRate.slice(0, 20),
-      monthlyContribution: monthlyContribution.slice(0, 30),
-    },
+    goal: backup.goal,
   };
 }
 
@@ -672,7 +742,7 @@ function createCloudAppState(
   goalMonthlyContribution: string,
 ): CloudAppState {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     savings,
     interestRates,
     cashLedger,
@@ -687,6 +757,37 @@ function createCloudAppState(
 
 function formatCurrency(amount: number) {
   return currencyFormatter.format(Math.round(amount));
+}
+
+function createSavingsFinanceTransaction({
+  accountId,
+  amount,
+  date,
+  id,
+  note,
+  savingsId,
+  type,
+  createdAt,
+}: {
+  accountId: string;
+  amount: number;
+  date: string;
+  id: string;
+  note: string;
+  savingsId: number;
+  type: "savings-deposit" | "savings-settlement";
+  createdAt?: string;
+}): FinanceState["transactions"][number] {
+  return {
+    id,
+    type,
+    amount,
+    date,
+    accountId,
+    linkedSavingsId: savingsId,
+    note,
+    createdAt: createdAt ?? new Date().toISOString(),
+  };
 }
 
 function formatDate(dateString: string) {
@@ -810,6 +911,12 @@ export default function Home() {
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(
     null,
   );
+  const [settlingId, setSettlingId] = useState<number | null>(null);
+  const [settlementDraft, setSettlementDraft] = useState<SettlementDraft>({
+    accountId: "",
+    amount: "",
+    date: "",
+  });
   const [message, setMessage] = useState("");
   const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [goalMonthlyInterest, setGoalMonthlyInterest] = useState("");
@@ -1191,6 +1298,16 @@ export default function Home() {
     [interestRates],
   );
 
+  const activeSavings = useMemo(
+    () => savings.filter((item) => item.status !== "settled"),
+    [savings],
+  );
+  const settledSavingsCount = savings.length - activeSavings.length;
+  const vndAccounts = useMemo(
+    () => finance.accounts.filter((account) => account.currency === "VND"),
+    [finance.accounts],
+  );
+
   const groupedSavings = useMemo(() => {
     const groups = new Map<number, SavingsItem[]>();
     savings.forEach((item) => {
@@ -1214,12 +1331,12 @@ export default function Home() {
   const today = getTodayIso();
 
   const summary = useMemo(() => {
-    const principal = savings.reduce((sum, item) => sum + item.amount, 0);
-    const interest = savings.reduce(
+    const principal = activeSavings.reduce((sum, item) => sum + item.amount, 0);
+    const interest = activeSavings.reduce(
       (sum, item) => sum + item.interestAfterTax,
       0,
     );
-    const accrued = savings.reduce(
+    const accrued = activeSavings.reduce(
       (totals, item) => {
         const itemAccrued = calculateAccruedInterest(item, today);
         totals.interest += itemAccrued.interest;
@@ -1229,7 +1346,7 @@ export default function Home() {
       },
       { interest: 0, tax: 0, interestAfterTax: 0 },
     );
-    const todayProfit = savings.reduce(
+    const todayProfit = activeSavings.reduce(
       (totals, item) => {
         const itemProfit = calculateInterestToday(item, today);
         totals.interest += itemProfit.interest;
@@ -1251,12 +1368,12 @@ export default function Home() {
       todayTax: todayProfit.tax,
       todayInterestAfterTax: todayProfit.interestAfterTax,
     };
-  }, [cashBalance, savings, today]);
+  }, [activeSavings, cashBalance, today]);
 
   const monthlyInterestTarget = parseAmount(goalMonthlyInterest);
   const cashflowMonths = useMemo(
-    () => buildCashflowSchedule(savings, cashflowPeriod, today),
-    [cashflowPeriod, savings, today],
+    () => buildCashflowSchedule(activeSavings, cashflowPeriod, today),
+    [activeSavings, cashflowPeriod, today],
   );
   const cashflowSummary = useMemo(() => {
     const principal = cashflowMonths.reduce(
@@ -1297,16 +1414,42 @@ export default function Home() {
     const overdue: SavingsItem[] = [];
     const nextSevenDays: SavingsItem[] = [];
     const nextThirtyDays: SavingsItem[] = [];
-    savings.forEach((item) => {
+    activeSavings.forEach((item) => {
       const difference = signedDaysBetween(today, item.maturityDate);
       if (difference < 0) overdue.push(item);
       else if (difference <= 7) nextSevenDays.push(item);
       else if (difference <= 30) nextThirtyDays.push(item);
     });
     return { nextSevenDays, nextThirtyDays, overdue };
-  }, [savings, today]);
+  }, [activeSavings, today]);
+  const budgetAlerts = useMemo(() => {
+    const monthKey = getMonthKey(today);
+    return finance.budgets.flatMap((budget) => {
+      const spent = getCategorySpent(
+        finance,
+        budget.categoryId,
+        monthKey,
+        budget.currency,
+      );
+      const ratio = spent / budget.monthlyLimit;
+      if (ratio < 0.8) return [];
+      const category = finance.categories.find(
+        (item) => item.id === budget.categoryId,
+      );
+      return [{
+        budget,
+        categoryName: category?.name ?? "Nhóm chi",
+        ratio,
+        spent,
+      }];
+    });
+  }, [finance, today]);
+  const reminderCount =
+    maturityAlerts.overdue.length +
+    maturityAlerts.nextSevenDays.length +
+    budgetAlerts.length;
   const ladderRecommendation = useMemo(() => {
-    if (savings.length === 0) {
+    if (activeSavings.length === 0) {
       return "Khi có khoản gửi, ứng dụng sẽ phân tích mức độ tập trung ngày đáo hạn và đề xuất cách chia kỳ hạn.";
     }
     if (!cashflowSummary.total || !cashflowSummary.peakMonth) {
@@ -1321,22 +1464,22 @@ export default function Home() {
       return `Các khoản đáo hạn đang tập trung trong ${cashflowSummary.activeMonths} tháng. Chia lần tái đầu tư tiếp theo thành nhiều kỳ hạn sẽ giúp tăng số mốc có thể tiếp cận tiền.`;
     }
     return `Dòng tiền đang được phân bổ trên ${cashflowSummary.activeMonths} tháng khác nhau. Có thể duy trì nhịp này bằng cách tái đầu tư mỗi khoản vào kỳ hạn phù hợp thay vì gom chung một ngày.`;
-  }, [cashflowPeriod, cashflowSummary, savings.length]);
+  }, [activeSavings.length, cashflowPeriod, cashflowSummary]);
 
   const currentPortfolio = useMemo(() => {
-    return savings.reduce(
+    return activeSavings.reduce(
       (sum, item) => sum + calculateCycleValueOnDate(item, today),
       0,
     );
-  }, [savings, today]);
+  }, [activeSavings, today]);
 
   const suggestedGoalRate = useMemo(() => {
     if (summary.principal <= 0) return 6;
-    return savings.reduce(
+    return activeSavings.reduce(
       (sum, item) => sum + item.amount * item.interestRate,
       0,
     ) / summary.principal;
-  }, [savings, summary.principal]);
+  }, [activeSavings, summary.principal]);
 
   const effectiveGoalRate =
     Number(goalInterestRate) > 0
@@ -1417,8 +1560,9 @@ export default function Home() {
             additionalContribution,
           })
         : null;
+    const itemId = editingId ?? Date.now();
     const item: SavingsItem = {
-      id: editingId ?? Date.now(),
+      id: itemId,
       name: form.name.trim() || "Khoản tiết kiệm",
       amount,
       interestRate,
@@ -1429,28 +1573,115 @@ export default function Home() {
         completedCycle
           ? [...previousHistory, completedCycle]
           : previousHistory,
+      bankName: form.bankName.trim().slice(0, 120) || undefined,
+      fundingAccountId: form.fundingAccountId || undefined,
+      settlementAccountId: form.settlementAccountId || undefined,
+      maturityInstruction: form.maturityInstruction,
+      status: "active",
     };
+
+    if (
+      mode === "add" ||
+      (mode === "edit" && previousHistory.length === 0)
+    ) {
+      const fundingTransactionId = `savings-${item.id}-initial`;
+      setFinance((current) => {
+        const existing = current.transactions.find(
+          (transaction) => transaction.id === fundingTransactionId,
+        );
+        const transactions = current.transactions.filter(
+          (transaction) => transaction.id !== fundingTransactionId,
+        );
+        const account = current.accounts.find(
+          (candidate) =>
+            candidate.id === item.fundingAccountId &&
+            candidate.currency === "VND",
+        );
+        if (!account) return { ...current, transactions };
+        return {
+          ...current,
+          transactions: [
+            createSavingsFinanceTransaction({
+              accountId: account.id,
+              amount: item.amount,
+              date: item.startDate,
+              id: fundingTransactionId,
+              note: `Gửi ${item.name}${item.bankName ? ` · ${item.bankName}` : ""}`,
+              savingsId: item.id,
+              type: "savings-deposit",
+              createdAt: existing?.createdAt,
+            }),
+            ...transactions,
+          ],
+        };
+      });
+    }
 
     if (mode !== "add" && editingId !== null) {
       setSavings((items) =>
         items.map((current) => (current.id === editingId ? item : current)),
       );
       if (mode === "reinvest" && sourceItem) {
+        const cycleNumber = previousHistory.length + 1;
+        setFinance((current) => {
+          const nextTransactions = [...current.transactions];
+          const fundingAccount = current.accounts.find(
+            (account) =>
+              account.id === item.fundingAccountId &&
+              account.currency === "VND",
+          );
+          const settlementAccount = current.accounts.find(
+            (account) =>
+              account.id === item.settlementAccountId &&
+              account.currency === "VND",
+          );
+          if (additionalContribution > 0 && fundingAccount) {
+            nextTransactions.unshift(
+              createSavingsFinanceTransaction({
+                accountId: fundingAccount.id,
+                amount: additionalContribution,
+                date: item.startDate,
+                id: `savings-${item.id}-contribution-${cycleNumber}`,
+                note: `Bổ sung vốn cho ${item.name}`,
+                savingsId: item.id,
+                type: "savings-deposit",
+              }),
+            );
+          }
+          if (cashRemainder > 0 && settlementAccount) {
+            nextTransactions.unshift(
+              createSavingsFinanceTransaction({
+                accountId: settlementAccount.id,
+                amount: cashRemainder,
+                date: item.startDate,
+                id: `savings-${item.id}-remainder-${cycleNumber}`,
+                note: `Tiền còn lại sau tái đầu tư ${item.name}`,
+                savingsId: item.id,
+                type: "savings-settlement",
+              }),
+            );
+          }
+          return { ...current, transactions: nextTransactions };
+        });
         if (cashRemainder > 0) {
-          setCashLedger((entries) => [
-            ...entries,
-            {
-              id: `${Date.now()}-${sourceItem.id}-${previousHistory.length}`,
-              amount: cashRemainder,
-              date: item.startDate,
-              savingsId: sourceItem.id,
-              savingsName: item.name,
-              status: "available",
-              type: "reinvestment-remainder",
-            },
-          ]);
+          if (!item.settlementAccountId) {
+            setCashLedger((entries) => [
+              ...entries,
+              {
+                id: `${Date.now()}-${sourceItem.id}-${previousHistory.length}`,
+                amount: cashRemainder,
+                date: item.startDate,
+                savingsId: sourceItem.id,
+                savingsName: item.name,
+                status: "available",
+                type: "reinvestment-remainder",
+              },
+            ]);
+          }
           setMessage(
-            `Đã tái đầu tư ${formatCurrency(amount)} và chuyển ${formatCurrency(cashRemainder)} vào Ví tiền chưa tái đầu tư.`,
+            item.settlementAccountId
+              ? `Đã tái đầu tư ${formatCurrency(amount)} và chuyển ${formatCurrency(cashRemainder)} vào tài khoản nhận.`
+              : `Đã tái đầu tư ${formatCurrency(amount)} và chuyển ${formatCurrency(cashRemainder)} vào Ví tiền chưa tái đầu tư.`,
           );
         } else if (additionalContribution > 0) {
           setMessage(
@@ -1470,6 +1701,78 @@ export default function Home() {
       setMessage(`Đã thêm “${item.name}”.`);
     }
     resetForm();
+  }
+
+  function openSettlement(item: SavingsItem) {
+    setSettlingId(item.id);
+    setSettlementDraft({
+      accountId: item.settlementAccountId ?? "",
+      amount: formatAmountInput(Math.round(item.totalAmount)),
+      date: today,
+    });
+  }
+
+  function closeSettlement() {
+    setSettlingId(null);
+    setSettlementDraft({ accountId: "", amount: "", date: "" });
+  }
+
+  function handleSettlement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const item = savings.find((candidate) => candidate.id === settlingId);
+    const actualAmount = parseAmount(settlementDraft.amount);
+    if (!item || !actualAmount || !settlementDraft.date) return;
+
+    setSavings((items) =>
+      items.map((candidate) =>
+        candidate.id === item.id
+          ? {
+              ...candidate,
+              status: "settled",
+              settledAt: settlementDraft.date,
+              actualSettlementAmount: actualAmount,
+              settlementAccountId: settlementDraft.accountId || undefined,
+            }
+          : candidate,
+      ),
+    );
+
+    const settlementTransactionId = `savings-${item.id}-settlement`;
+    setFinance((current) => {
+      const existing = current.transactions.find(
+        (transaction) => transaction.id === settlementTransactionId,
+      );
+      const transactions = current.transactions.filter(
+        (transaction) => transaction.id !== settlementTransactionId,
+      );
+      const account = current.accounts.find(
+        (candidate) =>
+          candidate.id === settlementDraft.accountId &&
+          candidate.currency === "VND",
+      );
+      if (!account) return { ...current, transactions };
+      return {
+        ...current,
+        transactions: [
+          createSavingsFinanceTransaction({
+            accountId: account.id,
+            amount: actualAmount,
+            date: settlementDraft.date,
+            id: settlementTransactionId,
+            note: `Tất toán ${item.name}${item.bankName ? ` · ${item.bankName}` : ""}`,
+            savingsId: item.id,
+            type: "savings-settlement",
+            createdAt: existing?.createdAt,
+          }),
+          ...transactions,
+        ],
+      };
+    });
+
+    setMessage(
+      `Đã tất toán “${item.name}” với số tiền thực nhận ${formatCurrency(actualAmount)}.`,
+    );
+    closeSettlement();
   }
 
   function handleAddRate() {
@@ -1528,6 +1831,12 @@ export default function Home() {
     setCashLedger((entries) =>
       entries.filter((entry) => entry.savingsId !== id),
     );
+    setFinance((current) => ({
+      ...current,
+      transactions: current.transactions.filter(
+        (transaction) => transaction.linkedSavingsId !== id,
+      ),
+    }));
     if (editingId === id) resetForm();
     if (expandedHistoryId === id) setExpandedHistoryId(null);
     setMessage(
@@ -1572,6 +1881,10 @@ export default function Home() {
       term: String(item.term),
       startDate:
         nextMode === "reinvest" ? item.maturityDate : item.startDate,
+      bankName: item.bankName ?? "",
+      fundingAccountId: item.fundingAccountId ?? "",
+      settlementAccountId: item.settlementAccountId ?? "",
+      maturityInstruction: item.maturityInstruction ?? "decide-later",
     });
     setMode(nextMode);
     // Editing and reinvesting both replace the source item. Keeping its id
@@ -1618,6 +1931,11 @@ export default function Home() {
       interestRates,
       cashLedger,
       finance,
+      goal: {
+        monthlyInterest: goalMonthlyInterest,
+        interestRate: goalInterestRate,
+        monthlyContribution: goalMonthlyContribution,
+      },
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -1662,6 +1980,9 @@ export default function Home() {
       setInterestRates(payload.interestRates);
       setCashLedger(payload.cashLedger);
       setFinance(payload.finance);
+      setGoalMonthlyInterest(payload.goal.monthlyInterest);
+      setGoalInterestRate(payload.goal.interestRate);
+      setGoalMonthlyContribution(payload.goal.monthlyContribution);
       setCollapsedRates(new Set());
       setExpandedHistoryId(null);
       resetForm();
@@ -2086,6 +2407,76 @@ export default function Home() {
         {appHeader}
         {cloudBanner}
 
+        <section className="action-center" aria-labelledby="action-center-title">
+          <div className="action-center-heading">
+            <div>
+              <span className="section-kicker">NHẮC VIỆC</span>
+              <h2 id="action-center-title">Việc cần chú ý hôm nay</h2>
+            </div>
+            <span className={reminderCount ? "reminder-count active" : "reminder-count"}>
+              {reminderCount} việc
+            </span>
+          </div>
+          <div className="reminder-summary">
+            <article className={maturityAlerts.overdue.length ? "urgent" : ""}>
+              <span>Quá ngày đáo hạn</span>
+              <strong>{maturityAlerts.overdue.length}</strong>
+            </article>
+            <article className={maturityAlerts.nextSevenDays.length ? "soon" : ""}>
+              <span>Trong 7 ngày</span>
+              <strong>{maturityAlerts.nextSevenDays.length}</strong>
+            </article>
+            <article>
+              <span>Trong 8–30 ngày</span>
+              <strong>{maturityAlerts.nextThirtyDays.length}</strong>
+            </article>
+            <article className={budgetAlerts.length ? "budget" : ""}>
+              <span>Ngân sách ≥ 80%</span>
+              <strong>{budgetAlerts.length}</strong>
+            </article>
+          </div>
+          {reminderCount ? (
+            <div className="reminder-list">
+              {[...maturityAlerts.overdue, ...maturityAlerts.nextSevenDays].map((item) => {
+                const overdue = item.maturityDate < today;
+                return (
+                  <article key={item.id}>
+                    <span className={overdue ? "reminder-icon urgent" : "reminder-icon soon"} aria-hidden="true">
+                      {overdue ? "!" : "⌛"}
+                    </span>
+                    <div>
+                      <strong>{item.name}</strong>
+                      <small>
+                        {item.bankName ? `${item.bankName} · ` : ""}
+                        {overdue ? "Đã quá hạn" : "Đáo hạn"} {formatDate(item.maturityDate)}
+                      </small>
+                    </div>
+                    <button type="button" onClick={() => openSettlement(item)}>
+                      Ghi tất toán
+                    </button>
+                  </article>
+                );
+              })}
+              {budgetAlerts.map((alert) => (
+                <article key={alert.budget.id}>
+                  <span className="reminder-icon budget" aria-hidden="true">%</span>
+                  <div>
+                    <strong>{alert.categoryName}</strong>
+                    <small>
+                      Đã dùng {Math.round(alert.ratio * 100)}% ngân sách {alert.budget.currency}
+                    </small>
+                  </div>
+                  <button type="button" onClick={() => setActiveWorkspace("finance")}>
+                    Xem ngân sách
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="reminder-empty">Không có việc gấp. Các khoản gửi và ngân sách đang trong kế hoạch.</p>
+          )}
+        </section>
+
         <section className="form-section" id="deposit-form">
           <div className="section-heading">
             <div>
@@ -2127,6 +2518,36 @@ export default function Home() {
                   placeholder="Ví dụ: Tiền tiết kiệm sinh nhật"
                   autoComplete="off"
                 />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="bankName">Ngân hàng</label>
+                <input
+                  type="text"
+                  id="bankName"
+                  value={form.bankName}
+                  onChange={(event) => updateForm("bankName", event.target.value)}
+                  placeholder="Ví dụ: Vietcombank"
+                  maxLength={120}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="maturityInstruction">Khi đáo hạn</label>
+                <select
+                  id="maturityInstruction"
+                  value={form.maturityInstruction}
+                  onChange={(event) =>
+                    updateForm(
+                      "maturityInstruction",
+                      event.target.value as MaturityInstruction,
+                    )
+                  }
+                >
+                  <option value="decide-later">Nhắc tôi quyết định</option>
+                  <option value="return">Nhận gốc và lãi</option>
+                  <option value="reinvest-all">Dự kiến tái đầu tư toàn bộ</option>
+                </select>
               </div>
 
               <div className="form-group">
@@ -2212,7 +2633,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="form-group form-group-wide">
+              <div className="form-group">
                 <label htmlFor="startDate">Ngày gửi</label>
                 <input
                   type="date"
@@ -2224,6 +2645,58 @@ export default function Home() {
                   }
                 />
               </div>
+
+              <div className="form-group">
+                <label htmlFor="fundingAccountId">
+                  {mode === "reinvest" ? "Tài khoản góp thêm" : "Tài khoản trừ tiền gửi"}
+                </label>
+                <select
+                  id="fundingAccountId"
+                  value={form.fundingAccountId}
+                  onChange={(event) =>
+                    updateForm("fundingAccountId", event.target.value)
+                  }
+                >
+                  <option value="">Không liên kết tài khoản</option>
+                  {vndAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group form-group-wide">
+                <label htmlFor="settlementAccountId">Tài khoản nhận tiền đáo hạn</label>
+                <select
+                  id="settlementAccountId"
+                  value={form.settlementAccountId}
+                  onChange={(event) =>
+                    updateForm("settlementAccountId", event.target.value)
+                  }
+                >
+                  <option value="">Chọn khi tất toán</option>
+                  {vndAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="account-link-note">
+              <span aria-hidden="true">↔</span>
+              <p>
+                {vndAccounts.length
+                  ? "Khi liên kết, tiền gửi và tiền tất toán sẽ tự cập nhật số dư tài khoản nhưng không bị tính thành thu hoặc chi."
+                  : "Chưa có tài khoản VND. Hãy tạo một tài khoản VND trong phân hệ Thu chi để tự động cập nhật số dư."}
+              </p>
+              {!vndAccounts.length && (
+                <button type="button" onClick={() => setActiveWorkspace("finance")}>
+                  Tạo tài khoản VND
+                </button>
+              )}
             </div>
 
             <div className="rate-manager">
@@ -2934,8 +3407,8 @@ export default function Home() {
               <h3>Mang dữ liệu sang thiết bị khác</h3>
               <p>
                 Tải một tệp chứa toàn bộ khoản gửi, lịch sử tái đầu tư, ví tiền
-                chưa tái đầu tư và danh sách lãi suất. Trên thiết bị khác, mở
-                ứng dụng rồi chọn khôi phục từ tệp.
+                chưa tái đầu tư, tài khoản, giao dịch, ngân sách và mục tiêu.
+                Trên thiết bị khác, mở ứng dụng rồi chọn khôi phục từ tệp.
               </p>
             </div>
             <div className="backup-actions">
@@ -2967,7 +3440,7 @@ export default function Home() {
               />
             </div>
             <p className="backup-note">
-              Khôi phục sẽ thay thế toàn bộ khoản gửi và ví tiền trên thiết bị
+              Khôi phục sẽ thay thế toàn bộ dữ liệu MoneyMind trên thiết bị
               hiện tại. Tệp chỉ được xử lý trong trình duyệt và không được tải
               lên máy chủ.
             </p>
@@ -2981,7 +3454,8 @@ export default function Home() {
               <h2 id="list-title">Các khoản gửi của bạn</h2>
             </div>
             <span className="deposit-count">
-              {savings.length} {savings.length === 1 ? "khoản" : "khoản gửi"}
+              {activeSavings.length} đang gửi
+              {settledSavingsCount ? ` · ${settledSavingsCount} đã tất toán` : ""}
             </span>
           </div>
 
@@ -3006,15 +3480,18 @@ export default function Home() {
             <div className="savings-list">
               {groupedSavings.map(([rate, items]) => {
                 const isCollapsed = collapsedRates.has(rate);
-                const groupPrincipal = items.reduce(
+                const activeGroupItems = items.filter(
+                  (item) => item.status !== "settled",
+                );
+                const groupPrincipal = activeGroupItems.reduce(
                   (sum, item) => sum + item.amount,
                   0,
                 );
-                const groupInterest = items.reduce(
+                const groupInterest = activeGroupItems.reduce(
                   (sum, item) => sum + item.interestAfterTax,
                   0,
                 );
-                const groupAccruedInterest = items.reduce(
+                const groupAccruedInterest = activeGroupItems.reduce(
                   (sum, item) =>
                     sum +
                     calculateAccruedInterest(item, today).interestAfterTax,
@@ -3028,7 +3505,12 @@ export default function Home() {
                         <span className="rate-orb" aria-hidden="true">%</span>
                         <div>
                           <h3>Lãi suất {formatRate(rate)}%/năm</h3>
-                          <p>{items.length} khoản gửi</p>
+                          <p>
+                            {activeGroupItems.length} đang gửi
+                            {items.length > activeGroupItems.length
+                              ? ` · ${items.length - activeGroupItems.length} đã tất toán`
+                              : ""}
+                          </p>
                         </div>
                       </div>
                       <div className="group-summary">
@@ -3063,6 +3545,7 @@ export default function Home() {
                         {items.map((item) => {
                           const history = item.history ?? [];
                           const cycles: SavingsCycle[] = [...history, item];
+                          const isSettled = item.status === "settled";
                           const isHistoryExpanded =
                             expandedHistoryId === item.id;
                           const progress = getTermProgress(
@@ -3076,6 +3559,12 @@ export default function Home() {
                           const todayInterest = calculateInterestToday(
                             item,
                             today,
+                          );
+                          const fundingAccount = finance.accounts.find(
+                            (account) => account.id === item.fundingAccountId,
+                          );
+                          const settlementAccount = finance.accounts.find(
+                            (account) => account.id === item.settlementAccountId,
                           );
 
                           return (
@@ -3100,26 +3589,47 @@ export default function Home() {
                                     )
                                   }
                                 />
+                                <div className="item-status-line">
+                                  <span className={isSettled ? "status-badge settled" : item.maturityDate <= today ? "status-badge matured" : "status-badge active"}>
+                                    {isSettled
+                                      ? "Đã tất toán"
+                                      : item.maturityDate <= today
+                                        ? "Đã đáo hạn"
+                                        : "Đang gửi"}
+                                  </span>
+                                  {item.bankName && <small>{item.bankName}</small>}
+                                </div>
                               </div>
                               <div className="item-amount">
                                 <span>Vốn gửi</span>
                                 <strong>{formatCurrency(item.amount)}</strong>
                               </div>
                               <div className="item-actions">
-                                <button
-                                  type="button"
-                                  className="btn-reinvest"
-                                  onClick={() => prepareItem(item, "reinvest")}
-                                >
-                                  ↻ Tái đầu tư
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-edit"
-                                  onClick={() => prepareItem(item, "edit")}
-                                >
-                                  Sửa
-                                </button>
+                                {!isSettled && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="btn-settle"
+                                      onClick={() => openSettlement(item)}
+                                    >
+                                      ✓ Tất toán
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-reinvest"
+                                      onClick={() => prepareItem(item, "reinvest")}
+                                    >
+                                      ↻ Tái đầu tư
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-edit"
+                                      onClick={() => prepareItem(item, "edit")}
+                                    >
+                                      Sửa
+                                    </button>
+                                  </>
+                                )}
                                 <button
                                   type="button"
                                   className="btn-delete"
@@ -3129,6 +3639,24 @@ export default function Home() {
                                 </button>
                               </div>
                             </div>
+                            {isSettled ? (
+                              <div className="settled-result-strip">
+                                <div>
+                                  <span>THỰC NHẬN KHI TẤT TOÁN</span>
+                                  <strong>{formatCurrency(item.actualSettlementAmount ?? item.totalAmount)}</strong>
+                                  <small>
+                                    {item.settledAt ? `Ngày ${formatDate(item.settledAt)}` : "Đã ghi nhận tất toán"}
+                                  </small>
+                                </div>
+                                <div>
+                                  <span>Lãi thực nhận</span>
+                                  <strong>
+                                    +{formatCurrency(Math.max(0, (item.actualSettlementAmount ?? item.totalAmount) - item.amount))}
+                                  </strong>
+                                  <small>{settlementAccount?.name ?? "Không liên kết tài khoản nhận"}</small>
+                                </div>
+                              </div>
+                            ) : (
                             <div className="accrued-interest-strip">
                               <div className="accrued-interest-main">
                                 <span>LÃI RÒNG KỲ HIỆN TẠI ĐẾN HÔM NAY</span>
@@ -3169,6 +3697,7 @@ export default function Home() {
                                 </span>
                               </div>
                             </div>
+                            )}
                             <div className="savings-details">
                               <div className="detail-item">
                                 <span>Kỳ hạn</span>
@@ -3200,8 +3729,26 @@ export default function Home() {
                                 <span>Tổng nhận được</span>
                                 <strong>{formatCurrency(item.totalAmount)}</strong>
                               </div>
+                              <div className="detail-item">
+                                <span>Tài khoản nguồn</span>
+                                <strong>{fundingAccount?.name ?? "Không liên kết"}</strong>
+                              </div>
+                              <div className="detail-item">
+                                <span>Tài khoản nhận</span>
+                                <strong>{settlementAccount?.name ?? "Chọn khi tất toán"}</strong>
+                              </div>
+                              <div className="detail-item">
+                                <span>Chỉ thị đáo hạn</span>
+                                <strong>
+                                  {item.maturityInstruction === "return"
+                                    ? "Nhận gốc và lãi"
+                                    : item.maturityInstruction === "reinvest-all"
+                                      ? "Tái đầu tư toàn bộ"
+                                      : "Chờ quyết định"}
+                                </strong>
+                              </div>
                             </div>
-                            <div
+                            {!isSettled && <div
                               className={
                                 progress.isComplete
                                   ? "term-progress complete"
@@ -3246,7 +3793,7 @@ export default function Home() {
                                   {formatDate(item.maturityDate)}
                                 </span>
                               </div>
-                            </div>
+                            </div>}
                             <>
                                 <button
                                   type="button"
@@ -3449,6 +3996,111 @@ export default function Home() {
             </div>
           )}
         </section>
+
+        {settlingId !== null && (() => {
+          const item = savings.find((candidate) => candidate.id === settlingId);
+          if (!item) return null;
+          const actualAmount = parseAmount(settlementDraft.amount);
+          const actualInterest = Math.max(0, actualAmount - item.amount);
+          const isEarlySettlement = settlementDraft.date < item.maturityDate;
+          return (
+            <div
+              className="settlement-backdrop"
+              role="presentation"
+              onMouseDown={(event) => {
+                if (event.currentTarget === event.target) closeSettlement();
+              }}
+            >
+              <form
+                className="settlement-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="settlement-title"
+                onSubmit={handleSettlement}
+              >
+                <div className="settlement-heading">
+                  <div>
+                    <span>GHI NHẬN THỰC TẾ</span>
+                    <h3 id="settlement-title">Tất toán “{item.name}”</h3>
+                  </div>
+                  <button type="button" onClick={closeSettlement} aria-label="Đóng">×</button>
+                </div>
+                <div className="settlement-projection">
+                  <span>Dự kiến nhận</span>
+                  <strong>{formatCurrency(item.totalAmount)}</strong>
+                  <small>Đáo hạn {formatDate(item.maturityDate)}</small>
+                </div>
+                {isEarlySettlement && (
+                  <p className="settlement-warning">
+                    Ngày tất toán trước ngày đáo hạn. Hãy nhập số thực nhận theo xác nhận của ngân hàng.
+                  </p>
+                )}
+                <div className="settlement-grid">
+                  <label>
+                    Số tiền thực nhận
+                    <div className="input-with-suffix">
+                      <input
+                        autoFocus
+                        type="text"
+                        inputMode="numeric"
+                        required
+                        value={settlementDraft.amount}
+                        onChange={(event) =>
+                          setSettlementDraft((current) => ({
+                            ...current,
+                            amount: formatAmountInput(event.target.value),
+                          }))
+                        }
+                      />
+                      <span>₫</span>
+                    </div>
+                  </label>
+                  <label>
+                    Ngày tất toán
+                    <input
+                      type="date"
+                      required
+                      value={settlementDraft.date}
+                      onChange={(event) =>
+                        setSettlementDraft((current) => ({
+                          ...current,
+                          date: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="settlement-account-field">
+                    Tài khoản nhận tiền
+                    <select
+                      value={settlementDraft.accountId}
+                      onChange={(event) =>
+                        setSettlementDraft((current) => ({
+                          ...current,
+                          accountId: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Không cập nhật số dư tài khoản</option>
+                      {vndAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="settlement-actual-summary">
+                  <span>Gốc {formatCurrency(item.amount)}</span>
+                  <strong>Lãi thực nhận +{formatCurrency(actualInterest)}</strong>
+                </div>
+                <div className="settlement-actions">
+                  <button type="button" className="btn-cancel" onClick={closeSettlement}>Hủy</button>
+                  <button type="submit" className="btn-primary">Xác nhận tất toán</button>
+                </div>
+              </form>
+            </div>
+          );
+        })()}
 
         <footer>
           <p>

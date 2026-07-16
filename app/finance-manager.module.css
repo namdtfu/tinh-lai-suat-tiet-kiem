@@ -894,6 +894,17 @@
   gap: 5px;
 }
 
+.systemEntry {
+  padding: 5px 8px;
+  color: #6d6376;
+  background: #f2eef7;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .editButton,
 .deleteButton {
   display: grid;
