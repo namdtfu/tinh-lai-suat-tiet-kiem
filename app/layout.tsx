@@ -3,22 +3,10 @@ import { headers } from "next/headers";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const forwardedHost = requestHeaders.get("x-forwarded-host")?.split(",")[0];
-  const host = forwardedHost ?? requestHeaders.get("host") ?? "localhost:3000";
-  const forwardedProtocol = requestHeaders
-    .get("x-forwarded-proto")
-    ?.split(",")[0];
-  const protocol =
-    forwardedProtocol === "http" || host.startsWith("localhost")
-      ? "http"
-      : "https";
-  const socialImage = new URL("/og.png", `${protocol}://${host}`).toString();
   const title = "MoneyMind – Tài sản, Ngân sách và Mục tiêu";
   const description =
     "Hợp nhất tài sản KRW/VND, theo dõi thu chi, dự báo ngân sách và liên kết tài khoản với các mục tiêu tài chính trong một ứng dụng.";
-
-  return {
+  const createMetadata = (socialImage: string): Metadata => ({
     title,
     description,
     openGraph: {
@@ -34,7 +22,26 @@ export async function generateMetadata(): Promise<Metadata> {
       description,
       images: [socialImage],
     },
-  };
+  });
+
+  if (process.env.GITHUB_PAGES_BUILD === "true") {
+    return createMetadata(
+      "https://namdtfu.github.io/tinh-lai-suat-tiet-kiem/og.png",
+    );
+  }
+
+  const requestHeaders = await headers();
+  const forwardedHost = requestHeaders.get("x-forwarded-host")?.split(",")[0];
+  const host = forwardedHost ?? requestHeaders.get("host") ?? "localhost:3000";
+  const forwardedProtocol = requestHeaders
+    .get("x-forwarded-proto")
+    ?.split(",")[0];
+  const protocol =
+    forwardedProtocol === "http" || host.startsWith("localhost")
+      ? "http"
+      : "https";
+  const socialImage = new URL("/og.png", `${protocol}://${host}`).toString();
+  return createMetadata(socialImage);
 }
 
 export default function RootLayout({
