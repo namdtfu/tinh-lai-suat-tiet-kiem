@@ -51,12 +51,16 @@ test("server-renders the correct application entry screen", async () => {
 });
 
 test("keeps reinvestment history and term progress in the product source", async () => {
-  const page = await readFile(
-    new URL("../app/page.tsx", import.meta.url),
-    "utf8",
-  );
+  const page = (
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../lib/savings.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/deposit-form.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/savings-list.tsx", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
 
-  assert.match(page, /type FormMode = "add" \| "edit" \| "reinvest"/);
+  assert.match(page, /type SavingsFormMode = "add" \| "edit" \| "reinvest"/);
   assert.match(page, /history:\s*SavingsCycle\[\]/);
   assert.match(page, /function getTermProgress\(/);
   assert.match(page, /role="progressbar"/);
@@ -95,10 +99,12 @@ test("splits a matured balance between reinvestment and the cash wallet", () => 
 });
 
 test("deletes wallet entries with their source savings item", async () => {
-  const page = await readFile(
-    new URL("../app/page.tsx", import.meta.url),
-    "utf8",
-  );
+  const page = (
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/savings-overview.tsx", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
 
   assert.match(
     page,
@@ -123,10 +129,12 @@ test("matches the reference daily-compounding calculation", () => {
 });
 
 test("calculates accrued net interest only through today or maturity", async () => {
-  const page = await readFile(
-    new URL("../app/page.tsx", import.meta.url),
-    "utf8",
-  );
+  const page = (
+    await Promise.all([
+      readFile(new URL("../lib/savings.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/savings-list.tsx", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
 
   assert.match(page, /function calculateAccruedInterest\(/);
   assert.match(page, /function calculateInterestToday\(/);
@@ -200,10 +208,13 @@ test("matches the real app accrued profit export on 2026-07-14", () => {
 });
 
 test("includes a versioned local backup and restore flow", async () => {
-  const page = await readFile(
-    new URL("../app/page.tsx", import.meta.url),
-    "utf8",
-  );
+  const page = (
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/backup-panel.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../lib/app-state.ts", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
 
   assert.match(page, /const BACKUP_FORMAT_VERSION = 6/);
   assert.match(page, /\[1, 2, 3, 4, 5, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
@@ -219,13 +230,19 @@ test("includes a versioned local backup and restore flow", async () => {
 });
 
 test("includes a separate income and expense management workspace", async () => {
-  const [page, manager, finance] = await Promise.all([
+  const [page, appState, managerSource, finance, accountDialog, budgetDialog, transactionDialog, categoryDialog] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/app-state.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/finance-manager.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/finance.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/finance/account-dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/finance/budget-dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/finance/transaction-dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/finance/category-manager-dialog.tsx", import.meta.url), "utf8"),
   ]);
+  const manager = [managerSource, accountDialog, budgetDialog, transactionDialog, categoryDialog].join("\n");
 
-  assert.match(page, /type AppWorkspace = "savings" \| "finance" \| "goals"/);
+  assert.match(appState, /type AppWorkspace = "savings" \| "finance" \| "goals"/);
   assert.match(page, /<FinanceManager/);
   assert.match(page, /<FinancialGoals/);
   assert.match(manager, /Tổng quan/);
@@ -289,10 +306,15 @@ test("includes a separate income and expense management workspace", async () => 
 });
 
 test("includes linked savings lifecycle, settlement, and action reminders", async () => {
-  const page = await readFile(
-    new URL("../app/page.tsx", import.meta.url),
-    "utf8",
-  );
+  const page = (
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../lib/savings.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/settlement-modal.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/action-center.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/savings-trend-chart.tsx", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
 
   assert.match(page, /type SavingsStatus = "active" \| "settled"/);
   assert.match(page, /maturityInstruction: MaturityInstruction/);
@@ -307,7 +329,7 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
   assert.match(page, /buildSavingsTrend\(savings, today, 12\)/);
   assert.match(page, /Tăng trưởng tiền tiết kiệm/);
   assert.match(page, /className="savings-trend-svg"/);
-  assert.match(page, /selectedSavingsTrendMonth/);
+  assert.match(page, /setSelectedMonth/);
 });
 
 test("includes invite-only realtime cloud accounts with per-user database isolation", async () => {
@@ -347,10 +369,13 @@ test("includes invite-only realtime cloud accounts with per-user database isolat
 });
 
 test("includes a monthly interest goal planner", async () => {
-  const page = await readFile(
-    new URL("../app/page.tsx", import.meta.url),
-    "utf8",
-  );
+  const page = (
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../lib/savings.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/interest-goal-planner.tsx", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
 
   assert.match(page, /function calculateInterestGoal\(/);
   assert.match(page, /function calculateMonthlyNetRate\(/);
@@ -399,10 +424,12 @@ test("includes a monthly interest goal planner", async () => {
 });
 
 test("includes an interactive maturity cashflow and ladder view", async () => {
-  const page = await readFile(
-    new URL("../app/page.tsx", import.meta.url),
-    "utf8",
-  );
+  const page = (
+    await Promise.all([
+      readFile(new URL("../lib/savings.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/maturity-cashflow.tsx", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
 
   assert.match(page, /type CashflowPeriod = 12 \| 24/);
   assert.match(page, /function buildCashflowSchedule\(/);

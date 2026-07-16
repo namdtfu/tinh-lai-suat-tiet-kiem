@@ -1,0 +1,449 @@
+import {
+  createDefaultFinanceState,
+  type FinanceState,
+  normalizeFinanceState,
+  reconcileSavingsFundingTransactions,
+} from "./finance";
+import {
+  DEFAULT_EXCHANGE_SETTINGS,
+  type ExchangeRateSettings,
+  type FinancialGoal,
+  normalizeExchangeSettings,
+  normalizeFinancialGoals,
+} from "./planning";
+import {
+  calculateSavings,
+  type MaturityInstruction,
+  parseLocalDate,
+  type SavingsCycle,
+  type SavingsItem,
+  type SavingsStatus,
+  toLocalIso,
+} from "./savings";
+export const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
+export const BACKUP_FORMAT_VERSION = 6;
+export const MAX_BACKUP_SIZE = 5_000_000;
+
+export type AppWorkspace = "savings" | "finance" | "goals";
+
+export type GoalSettings = {
+  interestRate: string;
+  monthlyContribution: string;
+  monthlyInterest: string;
+};
+
+export type CashLedgerEntry = {
+  id: string;
+  amount: number;
+  date: string;
+  savingsId: number;
+  savingsName: string;
+  status: "available" | "used";
+  type: "reinvestment-remainder";
+  usedAt?: string;
+};
+
+export type BackupPayload = {
+  app: typeof BACKUP_APP_ID;
+  version: typeof BACKUP_FORMAT_VERSION;
+  exportedAt: string;
+  savings: SavingsItem[];
+  interestRates: number[];
+  cashLedger: CashLedgerEntry[];
+  finance: FinanceState;
+  goal: GoalSettings;
+  exchange: ExchangeRateSettings;
+  financialGoals: FinancialGoal[];
+  versionHistory: AppVersion[];
+};
+
+export type BackupStatus = {
+  kind: "success" | "error";
+  text: string;
+};
+
+export type CloudAppState = {
+  cashLedger: CashLedgerEntry[];
+  goal: GoalSettings;
+  interestRates: number[];
+  savings: SavingsItem[];
+  finance: FinanceState;
+  exchange: ExchangeRateSettings;
+  financialGoals: FinancialGoal[];
+  versionHistory: AppVersion[];
+  schemaVersion: 5;
+};
+
+export type AppStateCore = {
+  cashLedger: CashLedgerEntry[];
+  exchange: ExchangeRateSettings;
+  finance: FinanceState;
+  financialGoals: FinancialGoal[];
+  goal: GoalSettings;
+  interestRates: number[];
+  savings: SavingsItem[];
+};
+
+export type AppVersion = {
+  id: string;
+  createdAt: string;
+  label: string;
+  data: AppStateCore;
+};
+
+export type CloudConflict = {
+  remoteState: CloudAppState;
+  updatedAt: string;
+};
+
+export type AuthStatus = "checking" | "local" | "signed-in" | "signed-out";
+export type CloudSyncStatus = "idle" | "saving" | "saved" | "error";
+
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = parseLocalDate(value);
+  return !Number.isNaN(parsed.getTime()) && toLocalIso(parsed) === value;
+}
+
+function normalizeBackupCycle(value: unknown): SavingsCycle | null {
+  if (!isRecord(value)) return null;
+
+  const amount = Number(value.amount);
+  const interestRate = Number(value.interestRate);
+  const term = Number(value.term);
+  const startDate = value.startDate;
+  const reinvestedAmount =
+    value.reinvestedAmount === undefined
+      ? undefined
+      : Number(value.reinvestedAmount);
+  const cashRemainder =
+    value.cashRemainder === undefined
+      ? undefined
+      : Number(value.cashRemainder);
+  const additionalContribution =
+    value.additionalContribution === undefined
+      ? undefined
+      : Number(value.additionalContribution);
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !Number.isFinite(interestRate) ||
+    interestRate <= 0 ||
+    interestRate > 100 ||
+    !Number.isInteger(term) ||
+    term < 1 ||
+    !isValidIsoDate(startDate) ||
+    [reinvestedAmount, cashRemainder, additionalContribution].some(
+      (amountValue) =>
+        amountValue !== undefined &&
+        (!Number.isFinite(amountValue) || amountValue < 0),
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    amount,
+    interestRate,
+    term,
+    startDate,
+    ...calculateSavings(amount, interestRate, term, startDate),
+    ...(reinvestedAmount === undefined ? {} : { reinvestedAmount }),
+    ...(cashRemainder === undefined ? {} : { cashRemainder }),
+    ...(additionalContribution === undefined
+      ? {}
+      : { additionalContribution }),
+  };
+}
+
+export function normalizeCashLedgerEntry(value: unknown): CashLedgerEntry | null {
+  if (!isRecord(value)) return null;
+
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  const amount = Number(value.amount);
+  const savingsId = Number(value.savingsId);
+  const savingsName =
+    typeof value.savingsName === "string" ? value.savingsName.trim() : "";
+  const status = value.status;
+  const usedAt = value.usedAt;
+
+  if (
+    !id ||
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !isValidIsoDate(value.date) ||
+    !Number.isFinite(savingsId) ||
+    savingsId <= 0 ||
+    !savingsName ||
+    (status !== "available" && status !== "used") ||
+    value.type !== "reinvestment-remainder" ||
+    (usedAt !== undefined && !isValidIsoDate(usedAt))
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    amount,
+    date: value.date,
+    savingsId,
+    savingsName: savingsName.slice(0, 200),
+    status,
+    type: "reinvestment-remainder",
+    ...(usedAt === undefined ? {} : { usedAt }),
+  };
+}
+
+function normalizeBackupItem(value: unknown): SavingsItem | null {
+  if (!isRecord(value)) return null;
+  const cycle = normalizeBackupCycle(value);
+  const id = Number(value.id);
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const rawHistory = value.history ?? [];
+  const bankName = typeof value.bankName === "string" ? value.bankName.trim() : "";
+  const fundingAccountId =
+    typeof value.fundingAccountId === "string" ? value.fundingAccountId.trim() : "";
+  const settlementAccountId =
+    typeof value.settlementAccountId === "string"
+      ? value.settlementAccountId.trim()
+      : "";
+  const status: SavingsStatus = value.status === "settled" ? "settled" : "active";
+  const maturityInstruction: MaturityInstruction =
+    value.maturityInstruction === "return" ||
+    value.maturityInstruction === "reinvest-all"
+      ? value.maturityInstruction
+      : "decide-later";
+  const settledAt = isValidIsoDate(value.settledAt) ? value.settledAt : undefined;
+  const parsedActualSettlementAmount = Number(value.actualSettlementAmount);
+  const actualSettlementAmount =
+    Number.isFinite(parsedActualSettlementAmount) &&
+    parsedActualSettlementAmount > 0
+      ? parsedActualSettlementAmount
+      : undefined;
+
+  if (
+    !cycle ||
+    !Number.isFinite(id) ||
+    id <= 0 ||
+    !Array.isArray(rawHistory)
+  ) {
+    return null;
+  }
+
+  const history = rawHistory.map(normalizeBackupCycle);
+  if (history.some((item) => item === null)) return null;
+
+  return {
+    ...cycle,
+    id,
+    name: (name || "Khoản tiết kiệm").slice(0, 200),
+    history: history as SavingsCycle[],
+    status,
+    maturityInstruction,
+    ...(bankName ? { bankName: bankName.slice(0, 120) } : {}),
+    ...(fundingAccountId ? { fundingAccountId: fundingAccountId.slice(0, 100) } : {}),
+    ...(settlementAccountId
+      ? { settlementAccountId: settlementAccountId.slice(0, 100) }
+      : {}),
+    ...(settledAt ? { settledAt } : {}),
+    ...(actualSettlementAmount ? { actualSettlementAmount } : {}),
+  };
+}
+
+export function normalizeGoalSettings(value: unknown): GoalSettings {
+  const goal = isRecord(value) ? value : {};
+  return {
+    monthlyInterest:
+      typeof goal.monthlyInterest === "string"
+        ? goal.monthlyInterest.slice(0, 30)
+        : "",
+    interestRate:
+      typeof goal.interestRate === "string"
+        ? goal.interestRate.slice(0, 20)
+        : "",
+    monthlyContribution:
+      typeof goal.monthlyContribution === "string"
+        ? goal.monthlyContribution.slice(0, 30)
+        : "",
+  };
+}
+
+function normalizeAppStateCore(value: unknown): AppStateCore | null {
+  if (!isRecord(value)) return null;
+  const rawSavings = Array.isArray(value.savings) ? value.savings : null;
+  const rawRates = Array.isArray(value.interestRates) ? value.interestRates : null;
+  const rawCashLedger = Array.isArray(value.cashLedger) ? value.cashLedger : null;
+  if (!rawSavings || !rawRates || !rawCashLedger) return null;
+
+  const savings = rawSavings.map(normalizeBackupItem);
+  const interestRates = rawRates.map(Number);
+  const cashLedger = rawCashLedger.map(normalizeCashLedgerEntry);
+  const savingsIds = new Set(
+    savings.flatMap((item) => (item ? [item.id] : [])),
+  );
+  if (
+    savings.some((item) => item === null) ||
+    cashLedger.some((entry) => entry === null) ||
+    savingsIds.size !== savings.length ||
+    interestRates.some(
+      (rate) => !Number.isFinite(rate) || rate <= 0 || rate > 100,
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    savings: savings as SavingsItem[],
+    interestRates: [...new Set(interestRates)],
+    cashLedger: cashLedger as CashLedgerEntry[],
+    finance: normalizeFinanceState(value.finance),
+    goal: normalizeGoalSettings(value.goal),
+    exchange: normalizeExchangeSettings(value.exchange),
+    financialGoals: normalizeFinancialGoals(value.financialGoals),
+  };
+}
+
+export function normalizeVersionHistory(value: unknown): AppVersion[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-20).flatMap((candidate) => {
+    if (!isRecord(candidate)) return [];
+    const data = normalizeAppStateCore(candidate.data);
+    const id = typeof candidate.id === "string" ? candidate.id.slice(0, 120) : "";
+    const createdAt =
+      typeof candidate.createdAt === "string"
+        ? candidate.createdAt.slice(0, 40)
+        : "";
+    if (!data || !id || !createdAt) return [];
+    return [{
+      id,
+      createdAt,
+      label:
+        typeof candidate.label === "string"
+          ? candidate.label.slice(0, 120)
+          : "Phiên bản tự động",
+      data,
+    }];
+  });
+}
+
+export function parseBackupPayload(value: unknown): BackupPayload | null {
+  const version = isRecord(value) ? Number(value.version) : 0;
+  const rawCashLedger =
+    isRecord(value) && version === 1 ? [] : isRecord(value) ? value.cashLedger : null;
+  const rawFinance =
+    isRecord(value) && version >= 3
+      ? value.finance
+      : createDefaultFinanceState();
+  const rawGoal =
+    isRecord(value) && version >= 5 ? value.goal : normalizeGoalSettings(null);
+  const rawExchange =
+    isRecord(value) && version >= 6 ? value.exchange : DEFAULT_EXCHANGE_SETTINGS;
+  const rawFinancialGoals =
+    isRecord(value) && version >= 6 ? value.financialGoals : [];
+  const rawVersionHistory =
+    isRecord(value) && version >= 6 ? value.versionHistory : [];
+
+  if (
+    !isRecord(value) ||
+    value.app !== BACKUP_APP_ID ||
+    ![1, 2, 3, 4, 5, BACKUP_FORMAT_VERSION].includes(version) ||
+    typeof value.exportedAt !== "string" ||
+    !Array.isArray(value.savings) ||
+    !Array.isArray(value.interestRates) ||
+    !Array.isArray(rawCashLedger)
+  ) {
+    return null;
+  }
+
+  const core = normalizeAppStateCore({
+    savings: value.savings,
+    interestRates: value.interestRates,
+    cashLedger: rawCashLedger,
+    finance: rawFinance,
+    goal: rawGoal,
+    exchange: rawExchange,
+    financialGoals: rawFinancialGoals,
+  });
+  if (!core) return null;
+  const repairedFinance = reconcileSavingsFundingTransactions(
+    core.finance,
+    core.savings,
+  );
+
+  return {
+    app: BACKUP_APP_ID,
+    version: BACKUP_FORMAT_VERSION,
+    exportedAt: value.exportedAt,
+    ...core,
+    finance: repairedFinance,
+    versionHistory: normalizeVersionHistory(rawVersionHistory),
+  };
+}
+
+export function parseCloudAppState(value: unknown): CloudAppState | null {
+  const schemaVersion = isRecord(value) ? Number(value.schemaVersion) : 0;
+  if (
+    !isRecord(value) ||
+    ![1, 2, 3, 4, 5].includes(schemaVersion)
+  ) {
+    return null;
+  }
+
+  const backup = parseBackupPayload({
+    app: BACKUP_APP_ID,
+    version: BACKUP_FORMAT_VERSION,
+    exportedAt: new Date().toISOString(),
+    savings: value.savings,
+    interestRates: value.interestRates,
+    cashLedger: value.cashLedger,
+    finance: schemaVersion >= 2 ? value.finance : createDefaultFinanceState(),
+    goal: value.goal,
+    exchange: schemaVersion >= 5 ? value.exchange : DEFAULT_EXCHANGE_SETTINGS,
+    financialGoals: schemaVersion >= 5 ? value.financialGoals : [],
+    versionHistory: schemaVersion >= 5 ? value.versionHistory : [],
+  });
+  if (!backup) return null;
+
+  return {
+    schemaVersion: 5,
+    savings: backup.savings,
+    interestRates: backup.interestRates,
+    cashLedger: backup.cashLedger,
+    finance: backup.finance,
+    goal: backup.goal,
+    exchange: backup.exchange,
+    financialGoals: backup.financialGoals,
+    versionHistory: backup.versionHistory,
+  };
+}
+
+export function createCloudAppState(
+  core: AppStateCore,
+  versionHistory: AppVersion[],
+): CloudAppState {
+  return {
+    schemaVersion: 5,
+    ...core,
+    versionHistory,
+  };
+}
+
+export function getCoreFromCloudState(state: CloudAppState): AppStateCore {
+  return {
+    savings: state.savings,
+    interestRates: state.interestRates,
+    cashLedger: state.cashLedger,
+    finance: state.finance,
+    goal: state.goal,
+    exchange: state.exchange,
+    financialGoals: state.financialGoals,
+  };
+}

@@ -15,11 +15,9 @@ import {
   deleteFinanceBudget,
   FINANCE_CURRENCIES,
   FinanceAccountType,
-  FinanceCategoryBreakdownItem,
   FinanceCategory,
   FinanceCategoryKind,
   FinanceCurrency,
-  FinanceDailyTrendItem,
   FinanceState,
   formatFinanceAmountInput,
   getCategoryPath,
@@ -40,10 +38,27 @@ import {
   calculateNetWorth,
   ExchangeRateSettings,
 } from "@/lib/planning";
+import AccountDialog from "./finance/account-dialog";
+import BudgetDialog from "./finance/budget-dialog";
+import CategoryManagerDialog from "./finance/category-manager-dialog";
+import TransactionDialog, {
+  type EditableFinanceTransactionType,
+} from "./finance/transaction-dialog";
+import {
+  CategoryBreakdownChart,
+  FinanceTrendChart,
+} from "./finance/finance-charts";
+import {
+  accountTypeLabels,
+  createFinanceId,
+  formatMoney,
+  formatMonth,
+  formatShortDate,
+  todayIso,
+} from "./finance/formatters";
 import styles from "./finance-manager.module.css";
 
 type FinanceTab = "overview" | "transactions" | "budgets" | "accounts";
-type EditableFinanceTransactionType = "income" | "expense" | "transfer";
 type TransactionFilter = "all" | EditableFinanceTransactionType | "savings";
 
 type FinanceManagerProps = {
@@ -54,193 +69,6 @@ type FinanceManagerProps = {
   exchangeSettings: ExchangeRateSettings;
   onExchangeSettingsChange: (settings: ExchangeRateSettings) => void;
 };
-
-const moneyFormatters: Record<FinanceCurrency, Intl.NumberFormat> = {
-  KRW: new Intl.NumberFormat("ko-KR", {
-    style: "currency",
-    currency: "KRW",
-    maximumFractionDigits: 0,
-  }),
-  VND: new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }),
-};
-
-const shortDateFormatter = new Intl.DateTimeFormat("vi-VN", {
-  weekday: "short",
-  day: "2-digit",
-  month: "2-digit",
-});
-
-const accountTypeLabels: Record<FinanceAccountType, string> = {
-  cash: "Tiền mặt",
-  bank: "Ngân hàng",
-  ewallet: "Ví điện tử",
-};
-
-function todayIso() {
-  const today = new Date();
-  const offset = today.getTimezoneOffset() * 60_000;
-  return new Date(today.getTime() - offset).toISOString().slice(0, 10);
-}
-
-function createId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function formatMoney(amount: number, currency: FinanceCurrency) {
-  return moneyFormatters[currency].format(Math.round(amount));
-}
-
-function formatMonth(monthKey: string) {
-  const [year, month] = monthKey.split("-").map(Number);
-  return new Intl.DateTimeFormat("vi-VN", {
-    month: "long",
-    year: "numeric",
-  }).format(new Date(year, month - 1, 1));
-}
-
-function formatShortDate(date: string) {
-  return shortDateFormatter.format(new Date(`${date}T00:00:00`));
-}
-
-function getDonutGradient(items: FinanceCategoryBreakdownItem[]) {
-  if (!items.length) return "#ece8f1";
-  const visibleItems = items.slice(0, 4);
-  let offset = 0;
-  const stops = visibleItems.map((item) => {
-    const start = offset;
-    offset = Math.min(100, offset + item.percentage);
-    return `${item.category.color} ${start}% ${offset}%`;
-  });
-  if (offset < 100) stops.push(`#d9d3e1 ${offset}% 100%`);
-  return `conic-gradient(${stops.join(", ")})`;
-}
-
-function CategoryBreakdownChart({
-  currency,
-  emptyLabel,
-  items,
-  title,
-  total,
-}: {
-  currency: FinanceCurrency;
-  emptyLabel: string;
-  items: FinanceCategoryBreakdownItem[];
-  title: string;
-  total: number;
-}) {
-  return (
-    <section className={styles.breakdownCard}>
-      <div className={styles.breakdownHeading}>
-        <span>{title}</span>
-        <strong>{formatMoney(total, currency)}</strong>
-      </div>
-      {items.length ? (
-        <>
-          <div className={styles.donutRow}>
-            <div
-              className={styles.donut}
-              style={{ background: getDonutGradient(items) }}
-              role="img"
-              aria-label={`Phân bổ ${title.toLowerCase()} theo nhóm`}
-            >
-              <span><b>{items.length}</b> nhóm</span>
-            </div>
-            <div className={styles.donutLegend}>
-              {items.slice(0, 4).map((item) => (
-                <div key={item.category.id}>
-                  <i style={{ background: item.category.color }} />
-                  <span>{item.category.icon} {item.category.name}</span>
-                  <b>{Math.round(item.percentage)}%</b>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className={styles.breakdownList}>
-            {items.map((item) => (
-              <div key={item.category.id}>
-                <span
-                  className={styles.roundIcon}
-                  style={{
-                    background: `${item.category.color}20`,
-                    color: item.category.color,
-                  }}
-                >
-                  {item.category.icon}
-                </span>
-                <span>
-                  <strong>{item.category.name}</strong>
-                  <small>{item.transactionCount} giao dịch</small>
-                </span>
-                <b>{formatMoney(item.amount, currency)}</b>
-                <em>{Math.round(item.percentage)}%</em>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        <div className={styles.breakdownEmpty}>{emptyLabel}</div>
-      )}
-    </section>
-  );
-}
-
-function FinanceTrendChart({
-  compact = false,
-  currency,
-  items,
-}: {
-  compact?: boolean;
-  currency: FinanceCurrency;
-  items: FinanceDailyTrendItem[];
-}) {
-  const maximum = Math.max(
-    1,
-    ...items.flatMap((item) => [
-      item.cumulativeIncome,
-      item.cumulativeExpense,
-    ]),
-  );
-  return (
-    <div
-      className={`${styles.trendChart} ${compact ? styles.compactTrend : ""}`}
-      role="img"
-      aria-label="Xu hướng thu chi lũy kế theo ngày"
-    >
-      <div
-        className={styles.trendColumns}
-        style={{
-          gridTemplateColumns: `repeat(${Math.max(1, items.length)}, minmax(3px, 1fr))`,
-        }}
-      >
-        {items.map((item) => (
-          <span
-            key={item.day}
-            className={styles.trendColumn}
-            title={`Ngày ${item.day}: thu ${formatMoney(item.cumulativeIncome, currency)}, chi ${formatMoney(item.cumulativeExpense, currency)}`}
-          >
-            <i
-              className={styles.incomeTrend}
-              style={{ height: `${Math.max(2, (item.cumulativeIncome / maximum) * 100)}%` }}
-            />
-            <i
-              className={styles.expenseTrend}
-              style={{ height: `${Math.max(2, (item.cumulativeExpense / maximum) * 100)}%` }}
-            />
-          </span>
-        ))}
-      </div>
-      <div className={styles.trendAxis}>
-        <span>01</span>
-        <span>{String(Math.ceil(items.length / 2)).padStart(2, "0")}</span>
-        <span>{String(items.length).padStart(2, "0")}</span>
-      </div>
-    </div>
-  );
-}
 
 export default function FinanceManager({
   exchangeSettings,
@@ -562,7 +390,8 @@ export default function FinanceManager({
       return;
     }
 
-    const transactionId = editingTransactionId || createId("transaction");
+    const transactionId =
+      editingTransactionId || createFinanceId("transaction");
     const now = new Date().toISOString();
     onChange((current) => {
       const existingTransaction = current.transactions.find(
@@ -614,7 +443,7 @@ export default function FinanceManager({
       bank: { color: "#6f4bd8", icon: "🏦" },
       ewallet: { color: "#e28b52", icon: "👛" },
     }[accountType];
-    const accountId = editingAccountId || createId("account");
+    const accountId = editingAccountId || createFinanceId("account");
     const savedCurrency =
       state.accounts.find((account) => account.id === editingAccountId)
         ?.currency ?? accountCurrency;
@@ -720,7 +549,7 @@ export default function FinanceManager({
       setFormError("Hãy chọn nhóm chi và nhập giới hạn lớn hơn 0.");
       return;
     }
-    const budgetId = editingBudgetId || createId("budget");
+    const budgetId = editingBudgetId || createFinanceId("budget");
     onChange((current) => {
       const existingForSelection = current.budgets.find(
         (budget) =>
@@ -846,7 +675,7 @@ export default function FinanceManager({
       setFormError("Hãy nhập tên nhóm.");
       return;
     }
-    const nextCategoryId = categoryId || createId("category");
+    const nextCategoryId = categoryId || createFinanceId("category");
     onChange((current) => {
       const existing = current.categories.find(
         (category) => category.id === nextCategoryId,
@@ -1415,199 +1244,101 @@ export default function FinanceManager({
         </article>
       )}
 
-      {transactionOpen && (
-        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) { setTransactionOpen(false); setEditingTransactionId(""); setFormError(""); } }}>
-          <form className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="transaction-title" onSubmit={submitTransaction}>
-            <div className={styles.modalHeading}><div><span>{editingTransactionId ? "CHỈNH SỬA GIAO DỊCH" : "GIAO DỊCH MỚI"}</span><h3 id="transaction-title">{editingTransactionId ? "Cập nhật dòng tiền" : "Ghi nhận dòng tiền"}</h3></div><button type="button" onClick={() => { setTransactionOpen(false); setEditingTransactionId(""); setFormError(""); }} aria-label="Đóng">×</button></div>
-            {editingTransactionId && (
-              <div className={styles.editFlowNotice}>
-                <strong>Cách cập nhật số dư</strong>
-                <p>Ứng dụng hoàn lại toàn bộ tác động của giao dịch cũ, sau đó áp dụng thông tin mới. Giao dịch không bị cộng hai lần.</p>
-              </div>
-            )}
-            <div className={styles.segmented}>
-              {(["expense", "income", "transfer"] as const).map((type) => <button key={type} type="button" className={transactionType === type ? styles.segmentActive : ""} onClick={() => { setTransactionType(type); setTransactionToAmount(""); setTransactionCategory(state.categories.find((category) => !category.archived && (type === "income" ? category.kind === "income" : category.kind === "expense"))?.id ?? ""); }}>{type === "expense" ? "Khoản chi" : type === "income" ? "Khoản thu" : "Chuyển khoản"}</button>)}
-            </div>
-            <div className={styles.currencyInputBlock}>
-              <span>ĐƠN VỊ NHẬP</span>
-              <div className={styles.currencyInputSwitch} aria-label="Chọn đơn vị giao dịch">
-                {FINANCE_CURRENCIES.map((currency) => (
-                  <button
-                    key={currency.code}
-                    type="button"
-                    className={transactionCurrency === currency.code ? styles.activeInputCurrency : ""}
-                    onClick={() => {
-                      const nextAccount = state.accounts.find(
-                        (account) => account.currency === currency.code,
-                      );
-                      if (!nextAccount) return;
-                      setTransactionCurrency(currency.code);
-                      setTransactionAccount(nextAccount.id);
-                      setTransactionAmount("");
-                      setTransactionToAmount("");
-                      if (nextAccount.id === transactionToAccount) {
-                        setTransactionToAccount(
-                          state.accounts.find(
-                            (account) => account.id !== nextAccount.id,
-                          )?.id ?? "",
-                        );
-                      }
-                    }}
-                  >
-                    <strong>{currency.symbol} {currency.code}</strong>
-                    <small>{currency.shortLabel}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label>
-              Số tiền {sourceAccount ? `(${sourceAccount.currency})` : ""}
-              <input autoFocus inputMode="numeric" type="text" value={transactionAmount} onChange={(event) => setTransactionAmount(formatFinanceAmountInput(event.target.value))} placeholder={sourceAccount?.currency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"} required />
-            </label>
-            <div className={styles.formGrid}>
-              <label>{transactionType === "transfer" ? "Từ tài khoản" : "Tài khoản"}<select value={transactionAccount} onChange={(event) => { const nextAccount = event.target.value; setTransactionAccount(nextAccount); setTransactionToAmount(""); if (nextAccount === transactionToAccount) setTransactionToAccount(state.accounts.find((account) => account.id !== nextAccount)?.id ?? ""); }} required>{state.accounts.filter((account) => account.currency === transactionCurrency).map((account) => <option key={account.id} value={account.id}>{account.name} ({account.currency})</option>)}</select></label>
-              {transactionType === "transfer" ? <label>Đến tài khoản<select value={transactionToAccount} onChange={(event) => { setTransactionToAccount(event.target.value); setTransactionToAmount(""); }} required><option value="">Chọn tài khoản</option>{state.accounts.filter((account) => account.id !== transactionAccount).map((account) => <option key={account.id} value={account.id}>{account.name} ({account.currency})</option>)}</select></label> : <label>Nhóm<select value={transactionCategory} onChange={(event) => setTransactionCategory(event.target.value)} required><option value="">Chọn nhóm</option>{renderCategoryOptions(transactionType === "income" ? "income" : "expense", transactionCategory)}</select></label>}
-              <label>Ngày<input type="date" value={transactionDate} onChange={(event) => setTransactionDate(event.target.value)} required /></label>
-              <label>Ghi chú<input value={transactionNote} onChange={(event) => setTransactionNote(event.target.value)} placeholder="Không bắt buộc" maxLength={240} /></label>
-            </div>
-            {isCurrencyConversion && sourceAccount && destinationAccount && (
-              <div className={styles.exchangeBox}>
-                <label>
-                  Số tiền thực nhận ({destinationAccount.currency})
-                  <input
-                    inputMode="numeric"
-                    type="text"
-                    value={transactionToAmount}
-                    onChange={(event) => setTransactionToAmount(formatFinanceAmountInput(event.target.value))}
-                    placeholder={destinationAccount.currency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"}
-                    required
-                  />
-                </label>
-                <p>
-                  {effectiveExchangeRate > 0
-                    ? `Tỷ giá thực tế: 1 ${sourceAccount.currency} ≈ ${effectiveExchangeRate.toLocaleString("vi-VN", { maximumFractionDigits: 4 })} ${destinationAccount.currency}`
-                    : "Nhập số thực nhận; tỷ giá sẽ được tính tự động."}
-                </p>
-              </div>
-            )}
-            {transactionType !== "transfer" && (
-              <button
-                className={styles.inlineLink}
-                type="button"
-                onClick={() => {
-                  startCategoryForm(
-                    transactionType === "income" ? "income" : "expense",
-                  );
-                  setCategoryManagerOpen(true);
-                }}
-              >
-                ＋ Thêm hoặc chỉnh sửa nhóm
-              </button>
-            )}
-            {formError && <p className={styles.formError} role="alert">{formError}</p>}
-            <button className={styles.saveButton} type="submit">{editingTransactionId ? "Lưu thay đổi" : "Lưu giao dịch"}</button>
-          </form>
-        </div>
-      )}
-
-      {accountOpen && (
-        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeAccount(); }}>
-          <form className={`${styles.modal} ${styles.smallModal}`} role="dialog" aria-modal="true" aria-labelledby="account-title" onSubmit={submitAccount}>
-            <div className={styles.modalHeading}><div><span>{editingAccountId ? "CHỈNH SỬA TÀI KHOẢN" : "TÀI KHOẢN MỚI"}</span><h3 id="account-title">{editingAccountId ? "Cập nhật nơi giữ tiền" : "Thêm nơi giữ tiền"}</h3></div><button type="button" onClick={closeAccount} aria-label="Đóng">×</button></div>
-            <label>Tên tài khoản<input autoFocus value={accountName} onChange={(event) => setAccountName(event.target.value)} placeholder="Ví dụ: Vietcombank" required maxLength={100} /></label>
-            <label>Loại tài khoản<select value={accountType} onChange={(event) => setAccountType(event.target.value as FinanceAccountType)}>{Object.entries(accountTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label>Đơn vị tiền<select value={accountCurrency} disabled={Boolean(editingAccountId)} onChange={(event) => setAccountCurrency(event.target.value as FinanceCurrency)}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
-            <label>Số dư ban đầu<input inputMode="numeric" type="text" value={accountOpeningBalance} onChange={(event) => setAccountOpeningBalance(formatFinanceAmountInput(event.target.value))} placeholder={accountCurrency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"} /></label>
-            <p className={styles.formHint}>{editingAccountId ? "Đổi số dư ban đầu sẽ làm số dư hiện tại tăng hoặc giảm tương ứng. Các giao dịch cũ vẫn được giữ nguyên." : "Đơn vị tiền của tài khoản không đổi sau khi tạo để lịch sử luôn chính xác."}</p>
-            {formError && <p className={styles.formError} role="alert">{formError}</p>}
-            <div className={styles.budgetModalActions}>
-              {editingAccountId && <button className={styles.dangerAction} type="button" onClick={() => deleteAccount(editingAccountId)}>Xóa tài khoản</button>}
-              <button className={styles.saveButton} type="submit">{editingAccountId ? "Lưu thay đổi" : "Thêm tài khoản"}</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {budgetOpen && (
-        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeBudget(); }}>
-          <form className={`${styles.modal} ${styles.smallModal}`} role="dialog" aria-modal="true" aria-labelledby="budget-title" onSubmit={submitBudget}>
-            <div className={styles.modalHeading}><div><span>{editingBudgetId ? "CHỈNH SỬA NGÂN SÁCH" : "NGÂN SÁCH THÁNG"}</span><h3 id="budget-title">{editingBudgetId ? "Cập nhật giới hạn chi" : "Đặt giới hạn chi"}</h3></div><button type="button" onClick={closeBudget} aria-label="Đóng">×</button></div>
-            {editingBudgetId && <p className={styles.formHint}>Bạn có thể đổi nhóm, đơn vị tiền hoặc giới hạn. Nếu trùng với một ngân sách khác, bản đang sửa sẽ thay thế ngân sách đó.</p>}
-            <label>Đơn vị ngân sách<select value={budgetCurrency} onChange={(event) => setBudgetCurrency(event.target.value as FinanceCurrency)}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
-            <label>Nhóm chi<select autoFocus value={budgetCategory} onChange={(event) => setBudgetCategory(event.target.value)} required><option value="">Chọn nhóm</option>{renderCategoryOptions("expense", budgetCategory)}</select></label>
-            <label>Giới hạn mỗi tháng<input inputMode="numeric" type="text" value={budgetLimit} onChange={(event) => setBudgetLimit(formatFinanceAmountInput(event.target.value))} placeholder={budgetCurrency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"} required /></label>
-            {formError && <p className={styles.formError} role="alert">{formError}</p>}
-            <div className={styles.budgetModalActions}>
-              {editingBudgetId && <button className={styles.dangerAction} type="button" onClick={() => deleteBudget(editingBudgetId)}>Xóa ngân sách</button>}
-              <button className={styles.saveButton} type="submit">{editingBudgetId ? "Lưu thay đổi" : "Lưu ngân sách"}</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {categoryManagerOpen && (
-        <div className={styles.modalBackdrop} role="presentation">
-          <div className={`${styles.modal} ${styles.categoryModal}`} role="dialog" aria-modal="true" aria-labelledby="category-title">
-            <div className={styles.modalHeading}>
-              <div><span>DANH MỤC CÁ NHÂN</span><h3 id="category-title">Nhóm giao dịch</h3></div>
-              <button type="button" onClick={() => setCategoryManagerOpen(false)} aria-label="Đóng">×</button>
-            </div>
-            <div className={`${styles.segmented} ${styles.twoSegments}`}>
-              {(["expense", "income"] as const).map((kind) => (
-                <button key={kind} type="button" className={categoryKind === kind ? styles.segmentActive : ""} onClick={() => startCategoryForm(kind)}>
-                  {kind === "expense" ? "Khoản chi" : "Khoản thu"}
-                </button>
-              ))}
-            </div>
-            <div className={styles.categoryToolbar}>
-              <p>Nhóm cha dùng để gom báo cáo; nhóm con giúp nhập chi tiết hơn.</p>
-              <label><input type="checkbox" checked={showArchivedCategories} onChange={(event) => setShowArchivedCategories(event.target.checked)} /> Hiện nhóm đã ẩn</label>
-            </div>
-            <div className={styles.categoryManagerGrid}>
-              <div className={styles.categoryTree}>
-                {state.categories
-                  .filter((category) => category.kind === categoryKind && !category.parentId && (showArchivedCategories || !category.archived))
-                  .map((root) => (
-                    <div key={root.id} className={`${styles.categoryTreeGroup} ${root.archived ? styles.archivedCategory : ""}`}>
-                      <div className={styles.categoryTreeRow}>
-                        <span className={styles.roundIcon} style={{ background: `${root.color}20`, color: root.color }}>{root.icon}</span>
-                        <strong>{root.name}</strong>
-                        <button type="button" onClick={() => startCategoryForm(root.kind, "", root)}>Sửa</button>
-                        <button type="button" onClick={() => toggleCategoryArchived(root)}>{root.archived ? "Khôi phục" : "Ẩn"}</button>
-                      </div>
-                      {state.categories
-                        .filter((child) => child.parentId === root.id && (showArchivedCategories || !child.archived))
-                        .map((child) => (
-                          <div key={child.id} className={`${styles.categoryTreeRow} ${styles.childCategory} ${child.archived ? styles.archivedCategory : ""}`}>
-                            <span className={styles.roundIcon} style={{ background: `${child.color}20`, color: child.color }}>{child.icon}</span>
-                            <strong>{child.name}</strong>
-                            <button type="button" onClick={() => startCategoryForm(child.kind, root.id, child)}>Sửa</button>
-                            <button type="button" onClick={() => toggleCategoryArchived(child)}>{child.archived ? "Khôi phục" : "Ẩn"}</button>
-                          </div>
-                        ))}
-                      {!root.archived && (
-                        <button className={styles.addChildButton} type="button" onClick={() => startCategoryForm(root.kind, root.id)}>＋ Thêm nhóm con cho {root.name}</button>
-                      )}
-                    </div>
-                  ))}
-              </div>
-              <form className={styles.categoryForm} onSubmit={submitCategory}>
-                <span>{categoryId ? "CHỈNH SỬA NHÓM" : "NHÓM MỚI"}</span>
-                <h4>{categoryParent ? "Nhóm con" : "Nhóm cha"}</h4>
-                <label>Tên nhóm<input autoFocus value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Ví dụ: Ăn sáng" maxLength={100} required /></label>
-                <div className={styles.formGrid}>
-                  <label>Biểu tượng<input value={categoryIcon} onChange={(event) => setCategoryIcon(event.target.value)} maxLength={12} /></label>
-                  <label>Màu<input type="color" value={categoryColor} onChange={(event) => setCategoryColor(event.target.value)} /></label>
-                </div>
-                <label>Nhóm cha<select value={categoryParent} onChange={(event) => setCategoryParent(event.target.value)}><option value="">Không có — đây là nhóm cha</option>{state.categories.filter((category) => category.kind === categoryKind && !category.parentId && !category.archived && category.id !== categoryId).map((category) => <option key={category.id} value={category.id}>{category.icon} {category.name}</option>)}</select></label>
-                {formError && <p className={styles.formError} role="alert">{formError}</p>}
-                <button className={styles.saveButton} type="submit">{categoryId ? "Lưu thay đổi" : "Thêm nhóm"}</button>
-                {(categoryId || categoryName) && <button className={styles.resetButton} type="button" onClick={() => startCategoryForm(categoryKind)}>Tạo nhóm khác</button>}
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <TransactionDialog
+        account={transactionAccount}
+        accounts={state.accounts}
+        amount={transactionAmount}
+        categories={state.categories}
+        category={transactionCategory}
+        currency={transactionCurrency}
+        date={transactionDate}
+        destinationAccount={destinationAccount}
+        editingId={editingTransactionId}
+        effectiveExchangeRate={effectiveExchangeRate}
+        formError={formError}
+        isCurrencyConversion={Boolean(isCurrencyConversion)}
+        note={transactionNote}
+        onAccountChange={setTransactionAccount}
+        onAmountChange={setTransactionAmount}
+        onCategoryChange={setTransactionCategory}
+        onClose={() => {
+          setTransactionOpen(false);
+          setEditingTransactionId("");
+          setFormError("");
+        }}
+        onCurrencyChange={setTransactionCurrency}
+        onDateChange={setTransactionDate}
+        onManageCategories={(kind) => {
+          startCategoryForm(kind);
+          setCategoryManagerOpen(true);
+        }}
+        onNoteChange={setTransactionNote}
+        onSubmit={submitTransaction}
+        onToAccountChange={setTransactionToAccount}
+        onToAmountChange={setTransactionToAmount}
+        onTypeChange={setTransactionType}
+        open={transactionOpen}
+        renderCategoryOptions={renderCategoryOptions}
+        sourceAccount={sourceAccount}
+        toAccount={transactionToAccount}
+        toAmount={transactionToAmount}
+        type={transactionType}
+      />
+      <AccountDialog
+        currency={accountCurrency}
+        editingId={editingAccountId}
+        formError={formError}
+        name={accountName}
+        onBalanceChange={setAccountOpeningBalance}
+        onClose={closeAccount}
+        onCurrencyChange={setAccountCurrency}
+        onDelete={deleteAccount}
+        onNameChange={setAccountName}
+        onSubmit={submitAccount}
+        onTypeChange={setAccountType}
+        openingBalance={accountOpeningBalance}
+        open={accountOpen}
+        type={accountType}
+      />
+      <BudgetDialog
+        category={budgetCategory}
+        categoryOptions={renderCategoryOptions("expense", budgetCategory)}
+        currency={budgetCurrency}
+        editingId={editingBudgetId}
+        formError={formError}
+        limit={budgetLimit}
+        onCategoryChange={setBudgetCategory}
+        onClose={closeBudget}
+        onCurrencyChange={setBudgetCurrency}
+        onDelete={deleteBudget}
+        onLimitChange={setBudgetLimit}
+        onSubmit={submitBudget}
+        open={budgetOpen}
+      />
+      <CategoryManagerDialog
+        categories={state.categories}
+        color={categoryColor}
+        editingId={categoryId}
+        formError={formError}
+        icon={categoryIcon}
+        kind={categoryKind}
+        name={categoryName}
+        onClose={() => {
+          setCategoryManagerOpen(false);
+          setFormError("");
+        }}
+        onColorChange={setCategoryColor}
+        onIconChange={setCategoryIcon}
+        onNameChange={setCategoryName}
+        onParentChange={setCategoryParent}
+        onShowArchivedChange={setShowArchivedCategories}
+        onStartForm={startCategoryForm}
+        onSubmit={submitCategory}
+        onToggleArchived={toggleCategoryArchived}
+        open={categoryManagerOpen}
+        parentId={categoryParent}
+        showArchived={showArchivedCategories}
+      />
     </section>
   );
 }
