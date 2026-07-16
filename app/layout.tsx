@@ -14,9 +14,9 @@ export async function generateMetadata(): Promise<Metadata> {
       ? "http"
       : "https";
   const socialImage = new URL("/og.png", `${protocol}://${host}`).toString();
-  const title = "MoneyMind – Tiết kiệm và Thu chi";
+  const title = "MoneyMind – Tài sản, Ngân sách và Mục tiêu";
   const description =
-    "Theo dõi khoản gửi, nhắc đáo hạn, tất toán thực tế, dòng tiền, ngân sách và tài khoản cá nhân trong một ứng dụng.";
+    "Hợp nhất tài sản KRW/VND, theo dõi thu chi, dự báo ngân sách và liên kết tài khoản với các mục tiêu tài chính trong một ứng dụng.";
 
   return {
     title,
@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       title,
       description,
-      images: [{ url: socialImage, width: 1734, height: 908, alt: title }],
+      images: [{ url: socialImage, width: 1731, height: 909, alt: title }],
       locale: "vi_VN",
       type: "website",
     },

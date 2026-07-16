@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import {
   calculateAccountBalance,
+  calculateBudgetPlanSnapshot,
   calculateTotalsByCurrency,
   deleteFinanceAccount,
   deleteFinanceBudget,
@@ -23,10 +24,15 @@ import {
   parseFinanceAmountInput,
   saveFinanceAccount,
   saveFinanceBudget,
+  saveFinanceBudgetPlan,
   saveFinanceTransaction,
   shiftMonthKey,
   summarizeFinanceMonth,
 } from "@/lib/finance";
+import {
+  calculateNetWorth,
+  ExchangeRateSettings,
+} from "@/lib/planning";
 import styles from "./finance-manager.module.css";
 
 type FinanceTab = "overview" | "transactions" | "budgets" | "accounts";
@@ -36,6 +42,10 @@ type TransactionFilter = "all" | EditableFinanceTransactionType | "savings";
 type FinanceManagerProps = {
   state: FinanceState;
   onChange: (state: FinanceState) => void;
+  savingsValueVnd: number;
+  walletValueVnd: number;
+  exchangeSettings: ExchangeRateSettings;
+  onExchangeSettingsChange: (settings: ExchangeRateSettings) => void;
 };
 
 const moneyFormatters: Record<FinanceCurrency, Intl.NumberFormat> = {
@@ -225,7 +235,14 @@ function FinanceTrendChart({
   );
 }
 
-export default function FinanceManager({ state, onChange }: FinanceManagerProps) {
+export default function FinanceManager({
+  exchangeSettings,
+  onChange,
+  onExchangeSettingsChange,
+  savingsValueVnd,
+  state,
+  walletValueVnd,
+}: FinanceManagerProps) {
   const [activeTab, setActiveTab] = useState<FinanceTab>("overview");
   const [selectedMonth, setSelectedMonth] = useState(monthKeyFromIso(todayIso()));
   const [reportingCurrency, setReportingCurrency] = useState<FinanceCurrency>(
@@ -271,6 +288,7 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
   const [categoryColor, setCategoryColor] = useState("#6f4bd8");
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
   const [monthlyReportOpen, setMonthlyReportOpen] = useState(false);
+  const [netWorthSettingsOpen, setNetWorthSettingsOpen] = useState(false);
 
   const summary = useMemo(
     () => summarizeFinanceMonth(state, selectedMonth, reportingCurrency),
@@ -279,6 +297,46 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
   const totalsByCurrency = useMemo(
     () => calculateTotalsByCurrency(state),
     [state],
+  );
+  const netWorth = useMemo(
+    () =>
+      calculateNetWorth(
+        state,
+        savingsValueVnd,
+        walletValueVnd,
+        exchangeSettings,
+      ),
+    [exchangeSettings, savingsValueVnd, state, walletValueVnd],
+  );
+  const latestActualRate = useMemo(() => {
+    const accounts = new Map(state.accounts.map((account) => [account.id, account]));
+    for (const transaction of state.transactions) {
+      if (transaction.type !== "transfer" || !transaction.toAccountId) continue;
+      const source = accounts.get(transaction.accountId);
+      const destination = accounts.get(transaction.toAccountId);
+      const received = transaction.toAmount ?? transaction.amount;
+      if (!source || !destination || source.currency === destination.currency) continue;
+      if (source.currency === "KRW" && transaction.amount > 0) {
+        return received / transaction.amount;
+      }
+      if (destination.currency === "KRW" && received > 0) {
+        return transaction.amount / received;
+      }
+    }
+    return 0;
+  }, [state.accounts, state.transactions]);
+  const budgetPlan = (state.budgetPlans ?? []).find(
+    (plan) => plan.currency === reportingCurrency,
+  );
+  const budgetPlanSnapshot = useMemo(
+    () =>
+      calculateBudgetPlanSnapshot(
+        state,
+        selectedMonth,
+        reportingCurrency,
+        todayIso(),
+      ),
+    [reportingCurrency, selectedMonth, state],
   );
   const accountBalances = useMemo(
     () =>
@@ -605,6 +663,24 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
     setBudgetOpen(false);
   }
 
+  function submitBudgetPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const monthlyLimit = parseFinanceAmountInput(
+      String(formData.get("monthlyLimit") ?? ""),
+    );
+    if (!monthlyLimit) return;
+    onChange({
+      ...state,
+      budgetPlans: saveFinanceBudgetPlan(state.budgetPlans ?? [], {
+        currency: reportingCurrency,
+        monthlyLimit,
+        rollover: formData.get("rollover") === "on",
+        startMonth: budgetPlan?.startMonth ?? selectedMonth,
+      }),
+    });
+  }
+
   function openNewBudget() {
     setEditingBudgetId("");
     setBudgetCategory("");
@@ -818,11 +894,9 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
     <section className={styles.financeShell} aria-label="Quản lý thu chi">
       <div className={styles.financeTopbar}>
         <div>
-          <span className={styles.kicker}>DÒNG TIỀN CÁ NHÂN</span>
-          <h2>{formatMoney(totalsByCurrency[reportingCurrency], reportingCurrency)}</h2>
-          <p>
-            Tổng số dư {reportingCurrency} · không cộng gộp với tiền tệ khác
-          </p>
+          <span className={styles.kicker}>GIÁ TRỊ TÀI SẢN RÒNG</span>
+          <h2>{formatMoney(netWorth.totalInBase, netWorth.baseCurrency)}</h2>
+          <p>Tài khoản, tiền mặt và tiết kiệm · quy đổi về {netWorth.baseCurrency}</p>
         </div>
         <button className={styles.primaryAction} type="button" onClick={() => openTransaction()}>
           <span aria-hidden="true">＋</span> Thêm giao dịch
@@ -877,6 +951,30 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
           <button type="button" aria-label="Tháng sau" onClick={() => setSelectedMonth(shiftMonthKey(selectedMonth, 1))}>›</button>
         </div>
       </div>
+
+      {activeTab === "overview" && !monthlyReportOpen && (
+        <section className={styles.netWorthCard} aria-labelledby="net-worth-title">
+          <div className={styles.netWorthHeading}>
+            <div><span>TỔNG TÀI SẢN HỢP NHẤT</span><h3 id="net-worth-title">Một con số cho toàn bộ tài sản</h3></div>
+            <button type="button" onClick={() => setNetWorthSettingsOpen((current) => !current)}>{netWorthSettingsOpen ? "Đóng cấu hình" : "Cấu hình quy đổi"}</button>
+          </div>
+          <div className={styles.netWorthGrid}>
+            <article><span>Tài khoản & tiền mặt</span><strong>{formatMoney(netWorth.liquidInBase, netWorth.baseCurrency)}</strong><small>{formatMoney(netWorth.accountKrw, "KRW")} · {formatMoney(netWorth.accountVnd, "VND")}</small></article>
+            <article><span>Khoản tiết kiệm</span><strong>{formatMoney(netWorth.savingsInBase, netWorth.baseCurrency)}</strong><small>Giá trị hiện tại gồm lãi tích lũy</small></article>
+            <article><span>Ví chờ tái đầu tư</span><strong>{formatMoney(netWorth.walletInBase, netWorth.baseCurrency)}</strong><small>Tiền dư đang khả dụng</small></article>
+            <article className={styles.netWorthTotal}><span>Tài sản ròng</span><strong>{formatMoney(netWorth.totalInBase, netWorth.baseCurrency)}</strong><small>Theo tỷ giá đã lưu</small></article>
+          </div>
+          {netWorthSettingsOpen && (
+            <div className={styles.exchangeSettings}>
+              <label>Đồng tiền quy đổi chính<select value={exchangeSettings.baseCurrency} onChange={(event) => onExchangeSettingsChange({ ...exchangeSettings, baseCurrency: event.target.value as FinanceCurrency })}><option value="VND">VND</option><option value="KRW">KRW</option></select></label>
+              <label>1 KRW bằng bao nhiêu VND<input type="number" min="0.0001" step="0.0001" value={exchangeSettings.krwToVndRate} onChange={(event) => { const rate = Number(event.target.value); if (rate > 0) onExchangeSettingsChange({ ...exchangeSettings, krwToVndRate: rate, updatedAt: new Date().toISOString() }); }} /></label>
+              <label>Nguồn tỷ giá<select value={exchangeSettings.source} onChange={(event) => onExchangeSettingsChange({ ...exchangeSettings, source: event.target.value as ExchangeRateSettings["source"], updatedAt: new Date().toISOString() })}><option value="reference">Tỷ giá tham chiếu</option><option value="actual">Tỷ giá giao dịch thực tế</option></select></label>
+              <button type="button" disabled={!latestActualRate} onClick={() => onExchangeSettingsChange({ ...exchangeSettings, krwToVndRate: latestActualRate, source: "actual", updatedAt: new Date().toISOString() })}>Dùng giao dịch quy đổi gần nhất</button>
+              <small>{exchangeSettings.updatedAt ? `Cập nhật ${new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(exchangeSettings.updatedAt))}` : "Tỷ giá khởi tạo — hãy cập nhật theo tỷ giá bạn thực dùng."}</small>
+            </div>
+          )}
+        </section>
+      )}
 
       {activeTab === "overview" && !monthlyReportOpen && (
         <div className={styles.overviewGrid}>
@@ -1127,6 +1225,22 @@ export default function FinanceManager({ state, onChange }: FinanceManagerProps)
             <div><span>KẾ HOẠCH THÁNG</span><h3>Ngân sách theo nhóm</h3></div>
             <button className={styles.compactAction} type="button" onClick={openNewBudget}>＋ Đặt ngân sách</button>
           </div>
+          <section className={styles.totalBudgetPanel}>
+            <form key={`${reportingCurrency}-${budgetPlan?.monthlyLimit ?? 0}-${budgetPlan?.rollover ?? false}`} onSubmit={submitBudgetPlan}>
+              <div><span>NGÂN SÁCH TỔNG · {reportingCurrency}</span><strong>{budgetPlan ? formatMoney(budgetPlan.monthlyLimit, reportingCurrency) : "Chưa thiết lập"}</strong></div>
+              <label>Giới hạn tháng<input name="monthlyLimit" inputMode="numeric" required defaultValue={budgetPlan ? formatFinanceAmountInput(budgetPlan.monthlyLimit) : ""} placeholder="3.000.000" onInput={(event) => { event.currentTarget.value = formatFinanceAmountInput(event.currentTarget.value); }} /></label>
+              <label className={styles.rolloverToggle}><input name="rollover" type="checkbox" defaultChecked={budgetPlan?.rollover ?? true} /> Chuyển phần dư sang tháng sau</label>
+              <button type="submit">Lưu kế hoạch</button>
+            </form>
+            {budgetPlanSnapshot ? (
+              <div className={styles.budgetForecastGrid}>
+                <article><span>Kế hoạch khả dụng</span><strong>{formatMoney(budgetPlanSnapshot.available, reportingCurrency)}</strong><small>{budgetPlanSnapshot.carryIn > 0 ? `Gồm ${formatMoney(budgetPlanSnapshot.carryIn, reportingCurrency)} chuyển sang` : "Không có phần dư chuyển sang"}</small></article>
+                <article><span>Thực tế đã chi</span><strong>{formatMoney(budgetPlanSnapshot.spent, reportingCurrency)}</strong><small>{Math.round((budgetPlanSnapshot.spent / Math.max(1, budgetPlanSnapshot.available)) * 100)}% kế hoạch</small></article>
+                <article><span>Còn được chi mỗi ngày</span><strong>{formatMoney(budgetPlanSnapshot.dailyAllowance, reportingCurrency)}</strong><small>{budgetPlanSnapshot.daysRemaining} ngày còn lại</small></article>
+                <article className={budgetPlanSnapshot.variance >= 0 ? styles.forecastGood : styles.forecastRisk}><span>Dự báo cuối tháng</span><strong>{formatMoney(budgetPlanSnapshot.forecastExpense, reportingCurrency)}</strong><small>{budgetPlanSnapshot.variance >= 0 ? `Thấp hơn kế hoạch ${formatMoney(budgetPlanSnapshot.variance, reportingCurrency)}` : `Vượt kế hoạch ${formatMoney(Math.abs(budgetPlanSnapshot.variance), reportingCurrency)}`}</small></article>
+              </div>
+            ) : <p className={styles.totalBudgetEmpty}>Đặt ngân sách tổng để xem số tiền còn được chi mỗi ngày và dự báo cuối tháng.</p>}
+          </section>
           {state.budgets.length ? <div className={styles.budgetGrid}>
             {state.budgets.map((budget) => {
               const category = state.categories.find((item) => item.id === budget.categoryId);

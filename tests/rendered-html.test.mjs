@@ -30,7 +30,7 @@ test("server-renders the correct application entry screen", async () => {
 
   const html = await response.text();
   assert.match(html, /<html lang="vi">/i);
-  assert.match(html, /<title>MoneyMind – Tiết kiệm và Thu chi<\/title>/i);
+  assert.match(html, /<title>MoneyMind – Tài sản, Ngân sách và Mục tiêu<\/title>/i);
   const cloudEntryRendered = /Đang mở sổ tiết kiệm của bạn/i.test(html);
 
   if (cloudEntryRendered) {
@@ -205,12 +205,13 @@ test("includes a versioned local backup and restore flow", async () => {
     "utf8",
   );
 
-  assert.match(page, /const BACKUP_FORMAT_VERSION = 5/);
-  assert.match(page, /\[1, 2, 3, 4, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 6/);
+  assert.match(page, /\[1, 2, 3, 4, 5, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
   assert.match(page, /function parseBackupPayload\(/);
   assert.match(page, /cashLedger: CashLedgerEntry\[\]/);
   assert.match(page, /finance: FinanceState/);
   assert.match(page, /goal: GoalSettings/);
+  assert.match(page, /versionHistory: AppVersion\[\]/);
   assert.match(page, /URL\.createObjectURL\(blob\)/);
   assert.match(page, /accept="application\/json,\.json"/);
   assert.match(page, /Khôi phục từ tệp/);
@@ -224,11 +225,14 @@ test("includes a separate income and expense management workspace", async () => 
     readFile(new URL("../lib/finance.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /type AppWorkspace = "savings" \| "finance"/);
-  assert.match(page, /<FinanceManager state=\{finance\} onChange=\{setFinance\}/);
+  assert.match(page, /type AppWorkspace = "savings" \| "finance" \| "goals"/);
+  assert.match(page, /<FinanceManager/);
+  assert.match(page, /<FinancialGoals/);
   assert.match(manager, /Tổng quan/);
   assert.match(manager, /Giao dịch/);
   assert.match(manager, /Ngân sách/);
+  assert.match(manager, /TỔNG TÀI SẢN HỢP NHẤT/);
+  assert.match(manager, /Còn được chi mỗi ngày/);
   assert.match(manager, /Sửa ngân sách/);
   assert.match(manager, /Xóa ngân sách/);
   assert.match(manager, /Lưu thay đổi/);

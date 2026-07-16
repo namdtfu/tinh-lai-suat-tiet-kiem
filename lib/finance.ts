@@ -50,11 +50,32 @@ export type FinanceBudget = {
   monthlyLimit: number;
 };
 
+export type FinanceBudgetPlan = {
+  currency: FinanceCurrency;
+  monthlyLimit: number;
+  rollover: boolean;
+  startMonth: string;
+};
+
 export type FinanceState = {
   accounts: FinanceAccount[];
   categories: FinanceCategory[];
   transactions: FinanceTransaction[];
   budgets: FinanceBudget[];
+  budgetPlans: FinanceBudgetPlan[];
+};
+
+export type FinanceBudgetPlanSnapshot = {
+  available: number;
+  baseLimit: number;
+  carryIn: number;
+  currency: FinanceCurrency;
+  dailyAllowance: number;
+  daysRemaining: number;
+  forecastExpense: number;
+  remaining: number;
+  spent: number;
+  variance: number;
 };
 
 export type FinanceMonthSummary = {
@@ -168,6 +189,7 @@ export function createDefaultFinanceState(): FinanceState {
     categories: DEFAULT_FINANCE_CATEGORIES.map((category) => ({ ...category })),
     transactions: [],
     budgets: [],
+    budgetPlans: [],
   };
 }
 
@@ -327,6 +349,35 @@ function normalizeBudget(
   };
 }
 
+function isValidMonthKey(value: unknown): value is string {
+  if (typeof value !== "string" || value.length !== 7 || value[4] !== "-") {
+    return false;
+  }
+  const [year, month] = value.split("-").map(Number);
+  return (
+    Number.isInteger(year) &&
+    Number.isInteger(month) &&
+    year >= 2000 &&
+    year <= 2200 &&
+    month >= 1 &&
+    month <= 12
+  );
+}
+
+function normalizeBudgetPlan(value: unknown): FinanceBudgetPlan | null {
+  if (!isRecord(value)) return null;
+  const monthlyLimit = Number(value.monthlyLimit);
+  if (!Number.isFinite(monthlyLimit) || monthlyLimit <= 0) return null;
+  return {
+    currency: normalizeCurrency(value.currency, "VND"),
+    monthlyLimit,
+    rollover: value.rollover === true,
+    startMonth: isValidMonthKey(value.startMonth)
+      ? value.startMonth
+      : monthKeyFromIso(new Date().toISOString().slice(0, 10)),
+  };
+}
+
 function repairCategoryTree(categories: FinanceCategory[]) {
   const categoryMap = new Map(categories.map((category) => [category.id, category]));
   return categories.map((category) => {
@@ -370,6 +421,9 @@ export function normalizeFinanceState(value: unknown): FinanceState {
     ? value.transactions
     : [];
   const rawBudgets = Array.isArray(value.budgets) ? value.budgets : [];
+  const rawBudgetPlans = Array.isArray(value.budgetPlans)
+    ? value.budgetPlans
+    : [];
   const legacyAccount = rawAccounts[0];
   const isEmptyLegacyDefault =
     rawAccounts.length === 1 &&
@@ -424,6 +478,9 @@ export function normalizeFinanceState(value: unknown): FinanceState {
   const budgets = rawBudgets
     .map((budget) => normalizeBudget(budget, expenseCategoryIds))
     .filter(Boolean) as FinanceBudget[];
+  const budgetPlans = rawBudgetPlans
+    .map(normalizeBudgetPlan)
+    .filter(Boolean) as FinanceBudgetPlan[];
 
   return {
     accounts: normalizedAccounts,
@@ -435,6 +492,11 @@ export function normalizeFinanceState(value: unknown): FinanceState {
           `${budget.categoryId}:${budget.currency}`,
           budget,
         ]),
+      ).values(),
+    ],
+    budgetPlans: [
+      ...new Map(
+        budgetPlans.map((plan) => [plan.currency, plan]),
       ).values(),
     ],
   };
@@ -749,6 +811,76 @@ export function deleteFinanceBudget(
   return budgets.filter((budget) => budget.id !== budgetId);
 }
 
+export function saveFinanceBudgetPlan(
+  plans: FinanceBudgetPlan[],
+  nextPlan: FinanceBudgetPlan,
+) {
+  return [
+    ...plans.filter((plan) => plan.currency !== nextPlan.currency),
+    nextPlan,
+  ];
+}
+
+export function calculateBudgetPlanSnapshot(
+  state: FinanceState,
+  monthKey: string,
+  currency: FinanceCurrency,
+  todayIso: string,
+): FinanceBudgetPlanSnapshot | null {
+  const plan = (state.budgetPlans ?? []).find(
+    (item) => item.currency === currency,
+  );
+  if (!plan || !isValidMonthKey(monthKey)) return null;
+
+  let carryIn = 0;
+  if (plan.rollover && plan.startMonth < monthKey) {
+    let cursor = plan.startMonth;
+    let guard = 0;
+    while (cursor < monthKey && guard < 1_200) {
+      const spent = summarizeFinanceMonth(state, cursor, currency).expense;
+      carryIn = Math.max(0, plan.monthlyLimit + carryIn - spent);
+      cursor = shiftMonthKey(cursor, 1);
+      guard += 1;
+    }
+  }
+
+  const spent = summarizeFinanceMonth(state, monthKey, currency).expense;
+  const available = plan.monthlyLimit + carryIn;
+  const remaining = available - spent;
+  const [year, month] = monthKey.split("-").map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayMonth = monthKeyFromIso(todayIso);
+  const selectedDay = Number(todayIso.slice(8, 10));
+  const elapsedDays =
+    monthKey < todayMonth
+      ? daysInMonth
+      : monthKey > todayMonth
+        ? 0
+        : Math.min(daysInMonth, Math.max(1, selectedDay));
+  const daysRemaining =
+    monthKey < todayMonth
+      ? 0
+      : monthKey > todayMonth
+        ? daysInMonth
+        : Math.max(1, daysInMonth - selectedDay + 1);
+  const forecastExpense =
+    elapsedDays > 0 ? (spent / elapsedDays) * daysInMonth : 0;
+
+  return {
+    available,
+    baseLimit: plan.monthlyLimit,
+    carryIn,
+    currency,
+    dailyAllowance:
+      daysRemaining > 0 ? Math.max(0, remaining) / daysRemaining : 0,
+    daysRemaining,
+    forecastExpense,
+    remaining,
+    spent,
+    variance: available - forecastExpense,
+  };
+}
+
 export function saveFinanceAccount(
   accounts: FinanceAccount[],
   nextAccount: FinanceAccount,
@@ -787,6 +919,7 @@ export function hasMeaningfulFinanceData(state: FinanceState) {
   return Boolean(
     state.transactions.length ||
       state.budgets.length ||
+      (state.budgetPlans?.length ?? 0) ||
       state.accounts.length > 1 ||
       state.accounts.some(
         (account) =>

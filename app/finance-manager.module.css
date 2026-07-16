@@ -97,6 +97,127 @@
   margin: 18px 0 22px;
 }
 
+.netWorthCard {
+  margin-bottom: 18px;
+  padding: 22px;
+  border: 1px solid #ddd3ea;
+  border-radius: 19px;
+  background: linear-gradient(135deg, #fff, #f8f3fc);
+  box-shadow: 0 12px 32px rgba(49, 30, 74, 0.06);
+}
+
+.netWorthHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 17px;
+}
+
+.netWorthHeading span,
+.totalBudgetPanel form > div span {
+  color: #806f91;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+}
+
+.netWorthHeading h3 {
+  margin-top: 4px;
+  color: #34283f;
+  font-size: 1.15rem;
+}
+
+.netWorthHeading button,
+.exchangeSettings button {
+  padding: 8px 11px;
+  color: #5f3f82;
+  background: #f0e8f6;
+  border: 0;
+  border-radius: 9px;
+  font-weight: 750;
+}
+
+.netWorthGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.netWorthGrid article {
+  display: grid;
+  gap: 6px;
+  padding: 15px;
+  border-radius: 13px;
+  background: #fff;
+  border: 1px solid #e9e2ed;
+}
+
+.netWorthGrid span,
+.netWorthGrid small {
+  color: #83788b;
+  font-size: 0.7rem;
+}
+
+.netWorthGrid strong {
+  color: #352a40;
+  font-size: 1.02rem;
+}
+
+.netWorthGrid .netWorthTotal {
+  color: #fff;
+  background: linear-gradient(135deg, #5d3d7b, #805ca2);
+  border-color: transparent;
+}
+
+.netWorthGrid .netWorthTotal span,
+.netWorthGrid .netWorthTotal small,
+.netWorthGrid .netWorthTotal strong {
+  color: #fff;
+}
+
+.exchangeSettings {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e6ddec;
+}
+
+.exchangeSettings label {
+  display: grid;
+  gap: 6px;
+  color: #6e6277;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.exchangeSettings input,
+.exchangeSettings select {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #dcd3e3;
+  border-radius: 9px;
+  background: #fff;
+  color: #3c3145;
+}
+
+.exchangeSettings button {
+  min-height: 37px;
+}
+
+.exchangeSettings button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.exchangeSettings > small {
+  grid-column: 1 / -1;
+  color: #887d8d;
+}
+
 .currencySwitch {
   display: grid;
   grid-template-columns: repeat(2, minmax(150px, 1fr));
@@ -1004,6 +1125,96 @@
   gap: 13px;
 }
 
+.totalBudgetPanel {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid #ded5e6;
+  border-radius: 15px;
+  background: #faf7fc;
+}
+
+.totalBudgetPanel form {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, .7fr) auto auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.totalBudgetPanel form > div,
+.totalBudgetPanel label {
+  display: grid;
+  gap: 5px;
+}
+
+.totalBudgetPanel form > div strong {
+  color: #352942;
+  font-size: 1.2rem;
+}
+
+.totalBudgetPanel label {
+  color: #706578;
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.totalBudgetPanel input[type="text"],
+.totalBudgetPanel input:not([type]) {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #dcd3e3;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.totalBudgetPanel .rolloverToggle {
+  display: flex;
+  min-height: 39px;
+  align-items: center;
+  gap: 7px;
+}
+
+.rolloverToggle input { accent-color: #6f4bd8; }
+
+.totalBudgetPanel form > button {
+  min-height: 39px;
+  padding: 0 14px;
+  color: #fff;
+  background: #6040b8;
+  border: 0;
+  border-radius: 9px;
+  font-weight: 800;
+}
+
+.budgetForecastGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5dce9;
+}
+
+.budgetForecastGrid article {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.budgetForecastGrid span,
+.budgetForecastGrid small {
+  color: #807486;
+  font-size: .7rem;
+}
+
+.budgetForecastGrid strong { color: #352b3d; font-size: .96rem; }
+.budgetForecastGrid .forecastGood { background: #eef8f3; }
+.budgetForecastGrid .forecastGood strong { color: #168a66; }
+.budgetForecastGrid .forecastRisk { background: #fff0f1; }
+.budgetForecastGrid .forecastRisk strong { color: #c83d52; }
+.totalBudgetEmpty { margin: 14px 0 0; color: #81768a; font-size: .8rem; }
+
 .budgetCard,
 .accountCard {
   padding: 17px;
@@ -1540,6 +1751,16 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .netWorthGrid,
+  .budgetForecastGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exchangeSettings,
+  .totalBudgetPanel form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .categoryPreviewGrid,
   .reportBreakdownGrid {
     grid-template-columns: 1fr;
@@ -1581,6 +1802,18 @@
 
   .financeTopbar {
     align-items: flex-end;
+  }
+
+  .netWorthHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .netWorthGrid,
+  .budgetForecastGrid,
+  .exchangeSettings,
+  .totalBudgetPanel form {
+    grid-template-columns: 1fr;
   }
 
   .financeTopbar h2 {

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   calculateAccountBalance,
+  calculateBudgetPlanSnapshot,
   deleteFinanceAccount,
   deleteFinanceBudget,
   formatFinanceAmountInput,
@@ -15,6 +16,10 @@ import {
   saveFinanceTransaction,
   summarizeFinanceMonth,
 } from "../lib/finance.ts";
+import {
+  calculateFinancialGoalProgress,
+  calculateNetWorth,
+} from "../lib/planning.ts";
 
 test("amount inputs add Vietnamese thousand separators while keeping numeric value", () => {
   assert.equal(formatFinanceAmountInput("1"), "1");
@@ -530,4 +535,86 @@ test("linked savings movements update account balance without changing income or
     net: 0,
     transactionCount: 2,
   });
+});
+
+
+test("net worth converts KRW accounts and combines liquid cash with savings", () => {
+  const finance = {
+    accounts: [krwCash, vndBank],
+    categories: [],
+    transactions: [],
+    budgets: [],
+    budgetPlans: [],
+  };
+  const snapshot = calculateNetWorth(
+    finance,
+    200_000,
+    50_000,
+    { baseCurrency: "VND", krwToVndRate: 20, source: "actual", updatedAt: "" },
+  );
+
+  assert.equal(snapshot.liquidInBase, 300_000);
+  assert.equal(snapshot.savingsInBase, 200_000);
+  assert.equal(snapshot.walletInBase, 50_000);
+  assert.equal(snapshot.totalInBase, 550_000);
+});
+
+test("monthly budget rolls unused money forward and forecasts month end", () => {
+  const finance = {
+    accounts: [krwCash],
+    categories: [],
+    budgets: [],
+    budgetPlans: [
+      { currency: "KRW", monthlyLimit: 1_000, rollover: true, startMonth: "2026-06" },
+    ],
+    transactions: [
+      transaction({ id: "june", date: "2026-06-20", amount: 600 }),
+      transaction({ id: "july", date: "2026-07-10", amount: 200 }),
+    ],
+  };
+  const snapshot = calculateBudgetPlanSnapshot(
+    finance,
+    "2026-07",
+    "KRW",
+    "2026-07-16",
+  );
+
+  assert.equal(snapshot.carryIn, 400);
+  assert.equal(snapshot.available, 1_400);
+  assert.equal(snapshot.remaining, 1_200);
+  assert.equal(snapshot.dailyAllowance, 75);
+  assert.equal(snapshot.forecastExpense, 387.5);
+});
+
+test("financial goals combine linked accounts, savings and manual progress", () => {
+  const finance = {
+    accounts: [krwCash],
+    categories: [],
+    transactions: [],
+    budgets: [],
+    budgetPlans: [],
+  };
+  const goal = {
+    id: "emergency",
+    name: "Quỹ khẩn cấp",
+    type: "emergency",
+    targetAmount: 500_000,
+    currency: "VND",
+    linkedAccountIds: [krwCash.id],
+    linkedSavingsIds: [101],
+    manualAmount: 50_000,
+    createdAt: "2026-07-16T00:00:00.000Z",
+  };
+  const progress = calculateFinancialGoalProgress(
+    goal,
+    finance,
+    [{ id: 101, name: "Tiết kiệm", currentValueVnd: 200_000 }],
+    { baseCurrency: "VND", krwToVndRate: 20, source: "actual", updatedAt: "" },
+  );
+
+  assert.equal(progress.accountValue, 200_000);
+  assert.equal(progress.savingsValue, 200_000);
+  assert.equal(progress.currentAmount, 450_000);
+  assert.equal(progress.percentage, 90);
+  assert.equal(progress.remaining, 50_000);
 });

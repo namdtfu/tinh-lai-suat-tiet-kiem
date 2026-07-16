@@ -30,6 +30,13 @@ export type CloudStateRow<T> = {
   updated_at: string;
 };
 
+export class CloudConflictError extends Error {
+  constructor() {
+    super("Dữ liệu đã được thay đổi trên một thiết bị khác.");
+    this.name = "CloudConflictError";
+  }
+}
+
 export function isNewerCloudUpdate(current: string, incoming: string) {
   const incomingTime = Date.parse(incoming);
   if (!Number.isFinite(incomingTime)) return false;
@@ -150,6 +157,18 @@ export async function signInWithPassword(email: string, password: string) {
   return session;
 }
 
+export async function updateCloudPassword(
+  session: CloudSession,
+  password: string,
+) {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT",
+    headers: requestHeaders(session.accessToken),
+    body: JSON.stringify({ password }),
+  });
+  await assertOk(response);
+}
+
 export async function consumeMagicLinkSession() {
   if (typeof window === "undefined" || !window.location.hash) return null;
   const params = new URLSearchParams(window.location.hash.slice(1));
@@ -255,8 +274,30 @@ export async function readCloudState<T>(session: CloudSession) {
   return rows[0] ?? null;
 }
 
-export async function writeCloudState<T>(session: CloudSession, data: T) {
+export async function writeCloudState<T>(
+  session: CloudSession,
+  data: T,
+  expectedUpdatedAt?: string,
+) {
   const endpoint = new URL(`${SUPABASE_URL}/rest/v1/user_app_state`);
+  if (expectedUpdatedAt) {
+    endpoint.searchParams.set("select", "data,updated_at");
+    endpoint.searchParams.set("user_id", `eq.${session.user.id}`);
+    endpoint.searchParams.set("updated_at", `eq.${expectedUpdatedAt}`);
+    const response = await fetch(endpoint, {
+      method: "PATCH",
+      headers: {
+        ...requestHeaders(session.accessToken),
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ data, schema_version: 1 }),
+    });
+    await assertOk(response);
+    const rows = (await response.json()) as CloudStateRow<T>[];
+    if (!rows[0]) throw new CloudConflictError();
+    return rows[0];
+  }
+
   endpoint.searchParams.set("on_conflict", "user_id");
   const response = await fetch(endpoint, {
     method: "POST",
