@@ -65,6 +65,16 @@ export type FinanceState = {
   budgetPlans: FinanceBudgetPlan[];
 };
 
+export type FinanceSavingsFundingSource = {
+  amount: number;
+  bankName?: string;
+  fundingAccountId?: string;
+  id: number;
+  name: string;
+  startDate: string;
+  status?: "active" | "settled";
+};
+
 export type FinanceBudgetPlanSnapshot = {
   available: number;
   baseLimit: number;
@@ -502,6 +512,70 @@ export function normalizeFinanceState(value: unknown): FinanceState {
   };
 }
 
+export function reconcileSavingsFundingTransactions(
+  state: FinanceState,
+  savings: FinanceSavingsFundingSource[],
+) {
+  const vndAccountIds = new Set(
+    state.accounts
+      .filter((account) => account.currency === "VND")
+      .map((account) => account.id),
+  );
+  const recordedSavingsIds = new Set(
+    state.transactions.flatMap((transaction) =>
+      transaction.type === "savings-deposit" &&
+      Number.isFinite(transaction.linkedSavingsId)
+        ? [transaction.linkedSavingsId as number]
+        : [],
+    ),
+  );
+  const transactionIds = new Set(
+    state.transactions.map((transaction) => transaction.id),
+  );
+  const recoveredTransactions: FinanceTransaction[] = [];
+
+  for (const item of savings) {
+    const amount = Number(item.amount);
+    const savingsId = Number(item.id);
+    const transactionId = `savings-${savingsId}-initial`;
+    if (
+      item.status === "settled" ||
+      !Number.isFinite(savingsId) ||
+      savingsId <= 0 ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !isValidDate(item.startDate) ||
+      !item.fundingAccountId ||
+      !vndAccountIds.has(item.fundingAccountId) ||
+      recordedSavingsIds.has(savingsId) ||
+      transactionIds.has(transactionId)
+    ) {
+      continue;
+    }
+
+    const name = cleanText(item.name, "Khoản tiết kiệm", 120);
+    const bankName = cleanText(item.bankName, "", 120);
+    recoveredTransactions.push({
+      accountId: item.fundingAccountId,
+      amount,
+      createdAt: `${item.startDate}T00:00:00.000Z`,
+      date: item.startDate,
+      id: transactionId,
+      linkedSavingsId: savingsId,
+      note: `Gửi ${name}${bankName ? ` · ${bankName}` : ""}`,
+      type: "savings-deposit",
+    });
+    recordedSavingsIds.add(savingsId);
+    transactionIds.add(transactionId);
+  }
+
+  if (!recoveredTransactions.length) return state;
+  return {
+    ...state,
+    transactions: [...recoveredTransactions, ...state.transactions],
+  };
+}
+
 export function monthKeyFromIso(date: string) {
   return date.slice(0, 7);
 }
@@ -608,6 +682,24 @@ export function summarizeFinanceMonth(
     },
     { currency, income: 0, expense: 0, net: 0, transactionCount: 0 },
   );
+}
+
+export function getFinanceTransactionsForMonth(
+  state: FinanceState,
+  monthKey: string,
+  currency: FinanceCurrency,
+) {
+  const accountMap = new Map(
+    state.accounts.map((account) => [account.id, account]),
+  );
+  return state.transactions.filter((transaction) => {
+    if (monthKeyFromIso(transaction.date) !== monthKey) return false;
+    const sourceCurrency = accountMap.get(transaction.accountId)?.currency;
+    const destinationCurrency = transaction.toAccountId
+      ? accountMap.get(transaction.toAccountId)?.currency
+      : undefined;
+    return sourceCurrency === currency || destinationCurrency === currency;
+  });
 }
 
 export function findRootCategory(

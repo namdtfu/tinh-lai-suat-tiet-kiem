@@ -253,6 +253,10 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Quản lý nhóm/);
   assert.match(manager, /Thêm nhóm con/);
   assert.match(manager, /function editTransaction/);
+  assert.match(manager, /onChange\(\(current\) =>/);
+  assert.match(manager, /getFinanceTransactionsForMonth/);
+  assert.match(manager, /visibleBudgets/);
+  assert.match(manager, /Tài khoản nguồn không còn hợp lệ/);
   assert.match(manager, /hoàn lại toàn bộ tác động của giao dịch cũ/);
   assert.match(manager, /Lưu thay đổi/);
   assert.match(manager, /BÁO CÁO THÁNG/);
@@ -299,6 +303,11 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
   assert.match(page, /Việc cần chú ý hôm nay/);
   assert.match(page, /Ngân sách ≥ 80%/);
   assert.match(page, /transaction\.linkedSavingsId !== id/);
+  assert.match(page, /reconcileSavingsFundingTransactions/);
+  assert.match(page, /buildSavingsTrend\(savings, today, 12\)/);
+  assert.match(page, /Tăng trưởng tiền tiết kiệm/);
+  assert.match(page, /className="savings-trend-svg"/);
+  assert.match(page, /selectedSavingsTrendMonth/);
 });
 
 test("includes invite-only realtime cloud accounts with per-user database isolation", async () => {

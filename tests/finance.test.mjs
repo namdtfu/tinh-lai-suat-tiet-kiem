@@ -9,8 +9,10 @@ import {
   formatFinanceAmountInput,
   getFinanceCategoryBreakdown,
   getFinanceMonthDailyTrend,
+  getFinanceTransactionsForMonth,
   normalizeFinanceState,
   parseFinanceAmountInput,
+  reconcileSavingsFundingTransactions,
   saveFinanceAccount,
   saveFinanceBudget,
   saveFinanceTransaction,
@@ -20,6 +22,10 @@ import {
   calculateFinancialGoalProgress,
   calculateNetWorth,
 } from "../lib/planning.ts";
+import {
+  buildSavingsTrend,
+  getSavingsTrendSnapshot,
+} from "../lib/savings-trend.ts";
 
 test("amount inputs add Vietnamese thousand separators while keeping numeric value", () => {
   assert.equal(formatFinanceAmountInput("1"), "1");
@@ -358,6 +364,18 @@ test("monthly reports separate currencies and never count transfers as income", 
     { income: vnd.income, expense: vnd.expense, count: vnd.transactionCount },
     { income: 0, expense: 20_000, count: 2 },
   );
+  assert.deepEqual(
+    getFinanceTransactionsForMonth(state, "2026-07", "KRW").map(
+      (item) => item.id,
+    ),
+    ["income-krw", "conversion"],
+  );
+  assert.deepEqual(
+    getFinanceTransactionsForMonth(state, "2026-07", "VND").map(
+      (item) => item.id,
+    ),
+    ["expense-vnd", "conversion"],
+  );
 });
 
 test("monthly category reports roll child groups into their parent", () => {
@@ -535,6 +553,100 @@ test("linked savings movements update account balance without changing income or
     net: 0,
     transactionCount: 2,
   });
+});
+
+test("repairs missing deposits for active reinvested savings without creating duplicates", () => {
+  const account = {
+    ...vndBank,
+    openingBalance: 285_480_706,
+  };
+  const recordedDeposit = transaction({
+    id: "recorded-deposits",
+    type: "savings-deposit",
+    amount: 203_778_844,
+    accountId: account.id,
+    categoryId: undefined,
+    linkedSavingsId: 1,
+  });
+  const state = {
+    accounts: [account],
+    categories: [],
+    transactions: [recordedDeposit],
+    budgets: [],
+    budgetPlans: [],
+  };
+  const sources = [
+    { id: 2, name: "2tr won", amount: 36_359_279, startDate: "2026-07-11", fundingAccountId: account.id, status: "active" },
+    { id: 3, name: "1.5tr won", amount: 25_414_827, startDate: "2026-07-10", fundingAccountId: account.id, status: "active" },
+    { id: 4, name: "Tiền của Linh", amount: 19_927_756, startDate: "2026-07-13", fundingAccountId: account.id, status: "active" },
+  ];
+
+  const repaired = reconcileSavingsFundingTransactions(state, sources);
+  assert.equal(repaired.transactions.length, 4);
+  assert.equal(calculateAccountBalance(account, repaired.transactions), 0);
+  assert.deepEqual(
+    repaired.transactions.slice(0, 3).map((item) => item.linkedSavingsId),
+    [2, 3, 4],
+  );
+
+  const repairedAgain = reconcileSavingsFundingTransactions(repaired, sources);
+  assert.equal(repairedAgain.transactions.length, 4);
+});
+
+test("builds exactly 12 month-end savings trend points ending today", () => {
+  const trend = buildSavingsTrend([], "2026-07-16");
+
+  assert.equal(trend.length, 12);
+  assert.equal(trend[0].key, "2025-08");
+  assert.equal(trend[0].date, "2025-08-31");
+  assert.equal(trend[10].date, "2026-06-30");
+  assert.equal(trend[11].date, "2026-07-16");
+});
+
+test("savings trend follows reinvested cycles without double counting maturity", () => {
+  const savings = [{
+    amount: 110_000_000,
+    interestRate: 6,
+    startDate: "2026-03-01",
+    maturityDate: "2026-09-01",
+    status: "active",
+    history: [{
+      amount: 100_000_000,
+      interestRate: 6,
+      startDate: "2026-01-01",
+      maturityDate: "2026-03-01",
+    }],
+  }];
+
+  const beforeReinvestment = getSavingsTrendSnapshot(savings, "2026-02-28");
+  const afterReinvestment = getSavingsTrendSnapshot(savings, "2026-03-31");
+
+  assert.equal(beforeReinvestment.activeCount, 1);
+  assert.equal(beforeReinvestment.principal, 100_000_000);
+  assert.equal(afterReinvestment.activeCount, 1);
+  assert.equal(afterReinvestment.principal, 110_000_000);
+  assert.ok(afterReinvestment.value > 110_000_000);
+});
+
+test("settled savings leave the trend from the settlement date", () => {
+  const savings = [{
+    amount: 50_000_000,
+    interestRate: 7,
+    startDate: "2026-01-01",
+    maturityDate: "2026-06-01",
+    status: "settled",
+    settledAt: "2026-06-15",
+    history: [],
+  }];
+
+  assert.equal(
+    getSavingsTrendSnapshot(savings, "2026-06-14").activeCount,
+    1,
+  );
+  assert.deepEqual(
+    getSavingsTrendSnapshot(savings, "2026-06-15"),
+    { activeCount: 0, interest: 0, principal: 0, value: 0 },
+  );
 });
 
 

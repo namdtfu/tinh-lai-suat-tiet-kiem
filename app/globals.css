@@ -999,6 +999,265 @@ button {
   color: #fff;
 }
 
+.savings-trend-card {
+  --trend-color: var(--mint);
+  position: relative;
+  margin-top: 18px;
+  padding: 24px 24px 17px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(30, 168, 120, 0.1), transparent 29%),
+    linear-gradient(145deg, #fbfffd, #f6fbf9);
+  border: 1px solid #d6e9e2;
+  border-radius: 16px;
+}
+
+.savings-trend-card.decline {
+  --trend-color: var(--red);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(214, 76, 92, 0.09), transparent 29%),
+    linear-gradient(145deg, #fffdfd, #fff8f9);
+  border-color: #edd7da;
+}
+
+.savings-trend-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.savings-trend-kicker {
+  color: var(--trend-color);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.savings-trend-heading h3 {
+  margin-top: 3px;
+  font-size: 1.05rem;
+}
+
+.savings-trend-heading p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.savings-trend-current {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.savings-trend-current > span,
+.savings-trend-current > strong,
+.savings-trend-current > small {
+  display: block;
+}
+
+.savings-trend-current > span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.savings-trend-current > strong {
+  margin-top: 2px;
+  font-size: clamp(1.2rem, 2.5vw, 1.62rem);
+  letter-spacing: -0.035em;
+}
+
+.savings-trend-current > small {
+  margin-top: 2px;
+  color: var(--trend-color);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.savings-trend-plot {
+  position: relative;
+  min-height: 220px;
+  margin-top: 12px;
+}
+
+.savings-trend-svg {
+  display: block;
+  width: 100%;
+  height: 270px;
+  color: var(--trend-color);
+  overflow: visible;
+}
+
+.savings-trend-grid line {
+  stroke: #e6e8e7;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.savings-trend-grid text,
+.savings-trend-month {
+  fill: #89858f;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.savings-trend-area {
+  color: var(--trend-color);
+  pointer-events: none;
+}
+
+.savings-trend-line {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.savings-trend-selection line {
+  stroke: currentColor;
+  stroke-dasharray: 4 4;
+  stroke-opacity: 0.52;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.savings-trend-selection circle {
+  fill: #fff;
+  stroke: currentColor;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.savings-trend-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.savings-trend-hit {
+  fill: transparent;
+}
+
+.savings-trend-dot {
+  fill: currentColor;
+  stroke: #fff;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  transition: r 150ms ease;
+}
+
+.savings-trend-point:focus-visible .savings-trend-dot {
+  stroke: var(--violet-deep);
+  stroke-width: 4;
+}
+
+.savings-trend-tooltip rect {
+  fill: #2d2736;
+  filter: drop-shadow(0 7px 14px rgba(31, 24, 41, 0.18));
+}
+
+.savings-trend-tooltip text {
+  fill: #fff;
+}
+
+.savings-trend-tooltip .tooltip-month {
+  font-size: 10px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.savings-trend-tooltip .tooltip-value {
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.savings-trend-tooltip .tooltip-change {
+  fill: #d8d3de;
+  font-size: 9px;
+}
+
+.savings-trend-empty {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: flex;
+  width: min(300px, 80%);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 13px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px dashed #d8d3dc;
+  border-radius: 10px;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  font-size: 0.74rem;
+}
+
+.savings-trend-empty > span {
+  color: var(--violet);
+  font-size: 1.15rem;
+}
+
+.savings-trend-detail {
+  display: grid;
+  grid-template-columns: 0.9fr 1.15fr 1.15fr 1.45fr;
+  gap: 0;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8e5;
+}
+
+.savings-trend-detail > div {
+  min-width: 0;
+  padding: 2px 16px;
+  border-left: 1px solid #e2e8e5;
+}
+
+.savings-trend-detail > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.savings-trend-detail span,
+.savings-trend-detail strong,
+.savings-trend-detail small {
+  display: block;
+}
+
+.savings-trend-detail span {
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.savings-trend-detail strong {
+  margin-top: 3px;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+  text-transform: capitalize;
+}
+
+.savings-trend-detail strong.positive {
+  color: var(--mint);
+}
+
+.savings-trend-detail strong.negative {
+  color: var(--red);
+}
+
+.savings-trend-detail small {
+  margin-top: 2px;
+  color: #8c8792;
+  font-size: 0.62rem;
+}
+
+.savings-trend-note {
+  margin-top: 13px;
+  color: #8b8790;
+  font-size: 0.68rem;
+}
+
 .cash-wallet {
   margin-top: 18px;
   overflow: hidden;
@@ -3525,6 +3784,52 @@ footer {
     flex-direction: column;
   }
 
+  .savings-trend-card {
+    padding: 19px 17px 15px;
+  }
+
+  .savings-trend-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .savings-trend-current {
+    text-align: left;
+  }
+
+  .savings-trend-plot {
+    min-height: 205px;
+  }
+
+  .savings-trend-svg {
+    height: 220px;
+  }
+
+  .savings-trend-grid text,
+  .savings-trend-month,
+  .savings-trend-tooltip {
+    display: none;
+  }
+
+  .savings-trend-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .savings-trend-detail > div {
+    padding: 10px 12px;
+    border-top: 1px solid #e2e8e5;
+  }
+
+  .savings-trend-detail > div:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .savings-trend-detail > div:nth-child(-n + 2) {
+    border-top: 0;
+  }
+
   .today-interest-values {
     width: 100%;
     min-width: 0;
@@ -3638,6 +3943,21 @@ footer {
 
   .today-interest-values {
     grid-template-columns: 1fr;
+  }
+
+  .savings-trend-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .savings-trend-detail > div,
+  .savings-trend-detail > div:nth-child(odd) {
+    padding: 10px 0;
+    border-top: 1px solid #e2e8e5;
+    border-left: 0;
+  }
+
+  .savings-trend-detail > div:first-child {
+    border-top: 0;
   }
 
   .accrued-interest-breakdown > span {

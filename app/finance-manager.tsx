@@ -1,6 +1,12 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import {
+  type Dispatch,
+  FormEvent,
+  type SetStateAction,
+  useMemo,
+  useState,
+} from "react";
 import {
   calculateAccountBalance,
   calculateBudgetPlanSnapshot,
@@ -20,6 +26,7 @@ import {
   getCategorySpent,
   getFinanceCategoryBreakdown,
   getFinanceMonthDailyTrend,
+  getFinanceTransactionsForMonth,
   monthKeyFromIso,
   parseFinanceAmountInput,
   saveFinanceAccount,
@@ -41,7 +48,7 @@ type TransactionFilter = "all" | EditableFinanceTransactionType | "savings";
 
 type FinanceManagerProps = {
   state: FinanceState;
-  onChange: (state: FinanceState) => void;
+  onChange: Dispatch<SetStateAction<FinanceState>>;
   savingsValueVnd: number;
   walletValueVnd: number;
   exchangeSettings: ExchangeRateSettings;
@@ -289,6 +296,8 @@ export default function FinanceManager({
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
   const [monthlyReportOpen, setMonthlyReportOpen] = useState(false);
   const [netWorthSettingsOpen, setNetWorthSettingsOpen] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
 
   const summary = useMemo(
     () => summarizeFinanceMonth(state, selectedMonth, reportingCurrency),
@@ -398,22 +407,25 @@ export default function FinanceManager({
   }, [reportingCurrency, selectedMonth, state]);
   const monthTransactions = useMemo(
     () =>
-      state.transactions
+      getFinanceTransactionsForMonth(state, selectedMonth, reportingCurrency)
         .filter(
           (transaction) =>
-            monthKeyFromIso(transaction.date) === selectedMonth &&
-            (transactionFilter === "all" ||
+            transactionFilter === "all" ||
               (transactionFilter === "savings"
                 ? transaction.type === "savings-deposit" ||
                   transaction.type === "savings-settlement"
-                : transaction.type === transactionFilter)),
+                : transaction.type === transactionFilter),
         )
         .sort(
           (left, right) =>
             right.date.localeCompare(left.date) ||
             right.createdAt.localeCompare(left.createdAt),
         ),
-    [selectedMonth, state.transactions, transactionFilter],
+    [reportingCurrency, selectedMonth, state, transactionFilter],
+  );
+  const visibleBudgets = useMemo(
+    () => state.budgets.filter((budget) => budget.currency === reportingCurrency),
+    [reportingCurrency, state.budgets],
   );
   const sourceAccount = state.accounts.find(
     (account) => account.id === transactionAccount,
@@ -459,6 +471,7 @@ export default function FinanceManager({
     );
     setTransactionDate(todayIso());
     setTransactionNote("");
+    setFormError("");
     setTransactionOpen(true);
   }
 
@@ -491,55 +504,100 @@ export default function FinanceManager({
     setTransactionCategory(transaction.categoryId ?? "");
     setTransactionDate(transaction.date);
     setTransactionNote(transaction.note);
+    setFormError("");
     setTransactionOpen(true);
   }
 
   function submitTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = parseFinanceAmountInput(transactionAmount);
-    if (!amount || !transactionAccount) return;
+    const source = state.accounts.find(
+      (account) => account.id === transactionAccount,
+    );
+    if (!amount) {
+      setFormError("Số tiền phải lớn hơn 0.");
+      return;
+    }
+    if (!source || source.currency !== transactionCurrency) {
+      setFormError("Tài khoản nguồn không còn hợp lệ. Hãy chọn lại tài khoản.");
+      return;
+    }
     if (
       transactionType === "transfer" &&
       (!transactionToAccount || transactionToAccount === transactionAccount)
-    )
+    ) {
+      setFormError("Hãy chọn một tài khoản nhận khác tài khoản nguồn.");
       return;
-    if (transactionType !== "transfer" && !transactionCategory) return;
+    }
+    const destination = state.accounts.find(
+      (account) => account.id === transactionToAccount,
+    );
+    if (transactionType === "transfer" && !destination) {
+      setFormError("Tài khoản nhận không còn tồn tại. Hãy chọn lại.");
+      return;
+    }
+    if (transactionType !== "transfer") {
+      const expectedKind = transactionType === "income" ? "income" : "expense";
+      const category = state.categories.find(
+        (item) =>
+          item.id === transactionCategory && item.kind === expectedKind,
+      );
+      if (!category) {
+        setFormError("Nhóm giao dịch không còn hợp lệ. Hãy chọn lại nhóm.");
+        return;
+      }
+    }
+    if (!transactionDate) {
+      setFormError("Hãy chọn ngày giao dịch.");
+      return;
+    }
     const destinationAmount =
       transactionType === "transfer"
-        ? isCurrencyConversion
+        ? source.currency !== destination?.currency
           ? parseFinanceAmountInput(transactionToAmount)
           : amount
         : undefined;
-    if (transactionType === "transfer" && !destinationAmount) return;
+    if (transactionType === "transfer" && !destinationAmount) {
+      setFormError("Số tiền tài khoản nhận phải lớn hơn 0.");
+      return;
+    }
 
-    const existingTransaction = state.transactions.find(
-      (transaction) => transaction.id === editingTransactionId,
-    );
+    const transactionId = editingTransactionId || createId("transaction");
     const now = new Date().toISOString();
-    const nextTransaction: FinanceState["transactions"][number] = {
-      id: existingTransaction?.id ?? createId("transaction"),
-      type: transactionType,
-      amount,
-      date: transactionDate,
-      accountId: transactionAccount,
-      ...(transactionType === "transfer"
-        ? {
-            toAccountId: transactionToAccount,
-            toAmount: destinationAmount,
-          }
-        : { categoryId: transactionCategory }),
-      note: transactionNote.trim(),
-      createdAt: existingTransaction?.createdAt ?? now,
-      ...(existingTransaction ? { updatedAt: now } : {}),
-    };
-
-    onChange({
-      ...state,
-      transactions: saveFinanceTransaction(
-        state.transactions,
-        nextTransaction,
-      ),
+    onChange((current) => {
+      const existingTransaction = current.transactions.find(
+        (transaction) => transaction.id === transactionId,
+      );
+      const nextTransaction: FinanceState["transactions"][number] = {
+        id: transactionId,
+        type: transactionType,
+        amount,
+        date: transactionDate,
+        accountId: transactionAccount,
+        ...(transactionType === "transfer"
+          ? {
+              toAccountId: transactionToAccount,
+              toAmount: destinationAmount,
+            }
+          : { categoryId: transactionCategory }),
+        note: transactionNote.trim(),
+        createdAt: existingTransaction?.createdAt ?? now,
+        ...(existingTransaction ? { updatedAt: now } : {}),
+      };
+      return {
+        ...current,
+        transactions: saveFinanceTransaction(
+          current.transactions,
+          nextTransaction,
+        ),
+      };
     });
+    setFormError("");
+    setActionNotice(
+      editingTransactionId
+        ? "Đã cập nhật giao dịch."
+        : "Đã thêm giao dịch mới.",
+    );
     setEditingTransactionId("");
     setTransactionOpen(false);
   }
@@ -547,28 +605,42 @@ export default function FinanceManager({
   function submitAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = accountName.trim();
-    if (!name) return;
+    if (!name) {
+      setFormError("Hãy nhập tên tài khoản.");
+      return;
+    }
     const accountVisual = {
       cash: { color: "#27a77b", icon: "💵" },
       bank: { color: "#6f4bd8", icon: "🏦" },
       ewallet: { color: "#e28b52", icon: "👛" },
     }[accountType];
-    const existingAccount = state.accounts.find(
-      (account) => account.id === editingAccountId,
-    );
-    const nextAccount = {
-      id: existingAccount?.id ?? createId("account"),
-      name,
-      type: accountType,
-      currency: existingAccount?.currency ?? accountCurrency,
-      openingBalance: parseFinanceAmountInput(accountOpeningBalance),
-      ...accountVisual,
-    };
-    onChange({
-      ...state,
-      accounts: saveFinanceAccount(state.accounts, nextAccount),
+    const accountId = editingAccountId || createId("account");
+    const savedCurrency =
+      state.accounts.find((account) => account.id === editingAccountId)
+        ?.currency ?? accountCurrency;
+    onChange((current) => {
+      const existingAccount = current.accounts.find(
+        (account) => account.id === accountId,
+      );
+      const nextAccount = {
+        id: accountId,
+        name,
+        type: accountType,
+        currency: existingAccount?.currency ?? savedCurrency,
+        openingBalance: parseFinanceAmountInput(accountOpeningBalance),
+        ...accountVisual,
+      };
+      return {
+        ...current,
+        accounts: saveFinanceAccount(current.accounts, nextAccount),
+      };
     });
-    setReportingCurrency(nextAccount.currency);
+    setReportingCurrency(savedCurrency);
+    setActionNotice(
+      editingAccountId
+        ? `Đã cập nhật tài khoản “${name}”.`
+        : `Đã thêm tài khoản “${name}”.`,
+    );
     closeAccount();
   }
 
@@ -578,6 +650,7 @@ export default function FinanceManager({
     setAccountType("bank");
     setAccountCurrency(reportingCurrency);
     setAccountOpeningBalance("");
+    setFormError("");
     setAccountOpen(true);
   }
 
@@ -589,6 +662,7 @@ export default function FinanceManager({
     setAccountType(account.type);
     setAccountCurrency(account.currency);
     setAccountOpeningBalance(formatFinanceAmountInput(account.openingBalance));
+    setFormError("");
     setAccountOpen(true);
   }
 
@@ -596,6 +670,7 @@ export default function FinanceManager({
     setEditingAccountId("");
     setAccountName("");
     setAccountOpeningBalance("");
+    setFormError("");
     setAccountOpen(false);
   }
 
@@ -619,7 +694,8 @@ export default function FinanceManager({
     }
     const nextState = deleteFinanceAccount(state, accountId);
     const fallbackAccount = nextState.accounts[0];
-    onChange(nextState);
+    onChange((current) => deleteFinanceAccount(current, accountId));
+    setActionNotice(`Đã xóa tài khoản “${account.name}” và các giao dịch liên quan.`);
     if (
       !nextState.accounts.some(
         (item) => item.currency === reportingCurrency,
@@ -640,22 +716,32 @@ export default function FinanceManager({
   function submitBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const monthlyLimit = parseFinanceAmountInput(budgetLimit);
-    if (!budgetCategory || !monthlyLimit) return;
-    const existingForSelection = state.budgets.find(
-      (budget) =>
-        budget.categoryId === budgetCategory &&
-        budget.currency === budgetCurrency,
-    );
-    const nextBudget = {
-      id: editingBudgetId || existingForSelection?.id || createId("budget"),
-      categoryId: budgetCategory,
-      currency: budgetCurrency,
-      monthlyLimit,
-    };
-    onChange({
-      ...state,
-      budgets: saveFinanceBudget(state.budgets, nextBudget),
+    if (!budgetCategory || !monthlyLimit) {
+      setFormError("Hãy chọn nhóm chi và nhập giới hạn lớn hơn 0.");
+      return;
+    }
+    const budgetId = editingBudgetId || createId("budget");
+    onChange((current) => {
+      const existingForSelection = current.budgets.find(
+        (budget) =>
+          budget.categoryId === budgetCategory &&
+          budget.currency === budgetCurrency,
+      );
+      const nextBudget = {
+        id: editingBudgetId || existingForSelection?.id || budgetId,
+        categoryId: budgetCategory,
+        currency: budgetCurrency,
+        monthlyLimit,
+      };
+      return {
+        ...current,
+        budgets: saveFinanceBudget(current.budgets, nextBudget),
+      };
     });
+    setFormError("");
+    setActionNotice(
+      editingBudgetId ? "Đã cập nhật ngân sách." : "Đã thêm ngân sách.",
+    );
     setEditingBudgetId("");
     setBudgetCategory("");
     setBudgetLimit("");
@@ -669,16 +755,25 @@ export default function FinanceManager({
     const monthlyLimit = parseFinanceAmountInput(
       String(formData.get("monthlyLimit") ?? ""),
     );
-    if (!monthlyLimit) return;
-    onChange({
-      ...state,
-      budgetPlans: saveFinanceBudgetPlan(state.budgetPlans ?? [], {
-        currency: reportingCurrency,
-        monthlyLimit,
-        rollover: formData.get("rollover") === "on",
-        startMonth: budgetPlan?.startMonth ?? selectedMonth,
-      }),
+    if (!monthlyLimit) {
+      setActionNotice("Giới hạn ngân sách tổng phải lớn hơn 0.");
+      return;
+    }
+    onChange((current) => {
+      const currentPlan = (current.budgetPlans ?? []).find(
+        (plan) => plan.currency === reportingCurrency,
+      );
+      return {
+        ...current,
+        budgetPlans: saveFinanceBudgetPlan(current.budgetPlans ?? [], {
+          currency: reportingCurrency,
+          monthlyLimit,
+          rollover: formData.get("rollover") === "on",
+          startMonth: currentPlan?.startMonth ?? selectedMonth,
+        }),
+      };
     });
+    setActionNotice(`Đã lưu kế hoạch ngân sách ${reportingCurrency}.`);
   }
 
   function openNewBudget() {
@@ -686,6 +781,7 @@ export default function FinanceManager({
     setBudgetCategory("");
     setBudgetCurrency(reportingCurrency);
     setBudgetLimit("");
+    setFormError("");
     setBudgetOpen(true);
   }
 
@@ -696,6 +792,7 @@ export default function FinanceManager({
     setBudgetCategory(budget.categoryId);
     setBudgetCurrency(budget.currency);
     setBudgetLimit(formatFinanceAmountInput(budget.monthlyLimit));
+    setFormError("");
     setBudgetOpen(true);
   }
 
@@ -703,6 +800,7 @@ export default function FinanceManager({
     setEditingBudgetId("");
     setBudgetCategory("");
     setBudgetLimit("");
+    setFormError("");
     setBudgetOpen(false);
   }
 
@@ -719,10 +817,11 @@ export default function FinanceManager({
     ) {
       return;
     }
-    onChange({
-      ...state,
-      budgets: deleteFinanceBudget(state.budgets, budgetId),
-    });
+    onChange((current) => ({
+      ...current,
+      budgets: deleteFinanceBudget(current.budgets, budgetId),
+    }));
+    setActionNotice("Đã xóa ngân sách. Giao dịch cũ được giữ nguyên.");
     if (editingBudgetId === budgetId) closeBudget();
   }
 
@@ -737,29 +836,41 @@ export default function FinanceManager({
     setCategoryName(category?.name ?? "");
     setCategoryIcon(category?.icon ?? "•");
     setCategoryColor(category?.color ?? "#6f4bd8");
+    setFormError("");
   }
 
   function submitCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = categoryName.trim();
-    if (!name) return;
-    const existing = state.categories.find((category) => category.id === categoryId);
-    const nextCategory: FinanceCategory = {
-      id: existing?.id ?? createId("category"),
-      name,
-      kind: categoryKind,
-      color: categoryColor,
-      icon: categoryIcon.trim().slice(0, 12) || "•",
-      ...(categoryParent ? { parentId: categoryParent } : {}),
-      ...(existing?.archived ? { archived: true } : {}),
-    };
-    onChange({
-      ...state,
-      categories: [
-        ...state.categories.filter((category) => category.id !== nextCategory.id),
-        nextCategory,
-      ],
+    if (!name) {
+      setFormError("Hãy nhập tên nhóm.");
+      return;
+    }
+    const nextCategoryId = categoryId || createId("category");
+    onChange((current) => {
+      const existing = current.categories.find(
+        (category) => category.id === nextCategoryId,
+      );
+      const nextCategory: FinanceCategory = {
+        id: nextCategoryId,
+        name,
+        kind: categoryKind,
+        color: categoryColor,
+        icon: categoryIcon.trim().slice(0, 12) || "•",
+        ...(categoryParent ? { parentId: categoryParent } : {}),
+        ...(existing?.archived ? { archived: true } : {}),
+      };
+      return {
+        ...current,
+        categories: [
+          ...current.categories.filter(
+            (category) => category.id !== nextCategory.id,
+          ),
+          nextCategory,
+        ],
+      };
     });
+    setActionNotice(categoryId ? "Đã cập nhật nhóm." : "Đã thêm nhóm mới.");
     startCategoryForm(categoryKind);
   }
 
@@ -775,30 +886,36 @@ export default function FinanceManager({
     ) {
       return;
     }
-    const affectedIds = new Set([
-      category.id,
-      ...(willArchive && !category.parentId
-        ? state.categories
-            .filter((item) => item.parentId === category.id)
-            .map((item) => item.id)
-        : []),
-    ]);
-    onChange({
-      ...state,
-      categories: state.categories.map((item) =>
-        affectedIds.has(item.id)
-          ? { ...item, archived: willArchive || undefined }
-          : item,
-      ),
+    onChange((current) => {
+      const affectedIds = new Set([
+        category.id,
+        ...(willArchive && !category.parentId
+          ? current.categories
+              .filter((item) => item.parentId === category.id)
+              .map((item) => item.id)
+          : []),
+      ]);
+      return {
+        ...current,
+        categories: current.categories.map((item) =>
+          affectedIds.has(item.id)
+            ? { ...item, archived: willArchive || undefined }
+            : item,
+        ),
+      };
     });
+    setActionNotice(willArchive ? "Đã ẩn nhóm." : "Đã khôi phục nhóm.");
   }
 
   function deleteTransaction(id: string) {
     if (!window.confirm("Xóa giao dịch này?")) return;
-    onChange({
-      ...state,
-      transactions: state.transactions.filter((transaction) => transaction.id !== id),
-    });
+    onChange((current) => ({
+      ...current,
+      transactions: current.transactions.filter(
+        (transaction) => transaction.id !== id,
+      ),
+    }));
+    setActionNotice("Đã xóa giao dịch và hoàn lại tác động lên số dư.");
   }
 
   function getTransactionMeta(transaction: FinanceState["transactions"][number]) {
@@ -902,6 +1019,18 @@ export default function FinanceManager({
           <span aria-hidden="true">＋</span> Thêm giao dịch
         </button>
       </div>
+      {actionNotice && (
+        <div className={styles.actionNotice} role="status">
+          <span>{actionNotice}</span>
+          <button
+            type="button"
+            onClick={() => setActionNotice("")}
+            aria-label="Đóng thông báo"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <nav className={styles.tabList} aria-label="Khu vực quản lý thu chi">
         {([
@@ -1241,8 +1370,8 @@ export default function FinanceManager({
               </div>
             ) : <p className={styles.totalBudgetEmpty}>Đặt ngân sách tổng để xem số tiền còn được chi mỗi ngày và dự báo cuối tháng.</p>}
           </section>
-          {state.budgets.length ? <div className={styles.budgetGrid}>
-            {state.budgets.map((budget) => {
+          {visibleBudgets.length ? <div className={styles.budgetGrid}>
+            {visibleBudgets.map((budget) => {
               const category = state.categories.find((item) => item.id === budget.categoryId);
               const spent = getCategorySpent(
                 state,
@@ -1287,9 +1416,9 @@ export default function FinanceManager({
       )}
 
       {transactionOpen && (
-        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) { setTransactionOpen(false); setEditingTransactionId(""); } }}>
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) { setTransactionOpen(false); setEditingTransactionId(""); setFormError(""); } }}>
           <form className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="transaction-title" onSubmit={submitTransaction}>
-            <div className={styles.modalHeading}><div><span>{editingTransactionId ? "CHỈNH SỬA GIAO DỊCH" : "GIAO DỊCH MỚI"}</span><h3 id="transaction-title">{editingTransactionId ? "Cập nhật dòng tiền" : "Ghi nhận dòng tiền"}</h3></div><button type="button" onClick={() => { setTransactionOpen(false); setEditingTransactionId(""); }} aria-label="Đóng">×</button></div>
+            <div className={styles.modalHeading}><div><span>{editingTransactionId ? "CHỈNH SỬA GIAO DỊCH" : "GIAO DỊCH MỚI"}</span><h3 id="transaction-title">{editingTransactionId ? "Cập nhật dòng tiền" : "Ghi nhận dòng tiền"}</h3></div><button type="button" onClick={() => { setTransactionOpen(false); setEditingTransactionId(""); setFormError(""); }} aria-label="Đóng">×</button></div>
             {editingTransactionId && (
               <div className={styles.editFlowNotice}>
                 <strong>Cách cập nhật số dư</strong>
@@ -1375,6 +1504,7 @@ export default function FinanceManager({
                 ＋ Thêm hoặc chỉnh sửa nhóm
               </button>
             )}
+            {formError && <p className={styles.formError} role="alert">{formError}</p>}
             <button className={styles.saveButton} type="submit">{editingTransactionId ? "Lưu thay đổi" : "Lưu giao dịch"}</button>
           </form>
         </div>
@@ -1389,6 +1519,7 @@ export default function FinanceManager({
             <label>Đơn vị tiền<select value={accountCurrency} disabled={Boolean(editingAccountId)} onChange={(event) => setAccountCurrency(event.target.value as FinanceCurrency)}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
             <label>Số dư ban đầu<input inputMode="numeric" type="text" value={accountOpeningBalance} onChange={(event) => setAccountOpeningBalance(formatFinanceAmountInput(event.target.value))} placeholder={accountCurrency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"} /></label>
             <p className={styles.formHint}>{editingAccountId ? "Đổi số dư ban đầu sẽ làm số dư hiện tại tăng hoặc giảm tương ứng. Các giao dịch cũ vẫn được giữ nguyên." : "Đơn vị tiền của tài khoản không đổi sau khi tạo để lịch sử luôn chính xác."}</p>
+            {formError && <p className={styles.formError} role="alert">{formError}</p>}
             <div className={styles.budgetModalActions}>
               {editingAccountId && <button className={styles.dangerAction} type="button" onClick={() => deleteAccount(editingAccountId)}>Xóa tài khoản</button>}
               <button className={styles.saveButton} type="submit">{editingAccountId ? "Lưu thay đổi" : "Thêm tài khoản"}</button>
@@ -1405,6 +1536,7 @@ export default function FinanceManager({
             <label>Đơn vị ngân sách<select value={budgetCurrency} onChange={(event) => setBudgetCurrency(event.target.value as FinanceCurrency)}>{FINANCE_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label} ({currency.code})</option>)}</select></label>
             <label>Nhóm chi<select autoFocus value={budgetCategory} onChange={(event) => setBudgetCategory(event.target.value)} required><option value="">Chọn nhóm</option>{renderCategoryOptions("expense", budgetCategory)}</select></label>
             <label>Giới hạn mỗi tháng<input inputMode="numeric" type="text" value={budgetLimit} onChange={(event) => setBudgetLimit(formatFinanceAmountInput(event.target.value))} placeholder={budgetCurrency === "KRW" ? "1.000.000 ₩" : "1.000.000 ₫"} required /></label>
+            {formError && <p className={styles.formError} role="alert">{formError}</p>}
             <div className={styles.budgetModalActions}>
               {editingBudgetId && <button className={styles.dangerAction} type="button" onClick={() => deleteBudget(editingBudgetId)}>Xóa ngân sách</button>}
               <button className={styles.saveButton} type="submit">{editingBudgetId ? "Lưu thay đổi" : "Lưu ngân sách"}</button>
@@ -1468,6 +1600,7 @@ export default function FinanceManager({
                   <label>Màu<input type="color" value={categoryColor} onChange={(event) => setCategoryColor(event.target.value)} /></label>
                 </div>
                 <label>Nhóm cha<select value={categoryParent} onChange={(event) => setCategoryParent(event.target.value)}><option value="">Không có — đây là nhóm cha</option>{state.categories.filter((category) => category.kind === categoryKind && !category.parentId && !category.archived && category.id !== categoryId).map((category) => <option key={category.id} value={category.id}>{category.icon} {category.name}</option>)}</select></label>
+                {formError && <p className={styles.formError} role="alert">{formError}</p>}
                 <button className={styles.saveButton} type="submit">{categoryId ? "Lưu thay đổi" : "Thêm nhóm"}</button>
                 {(categoryId || categoryName) && <button className={styles.resetButton} type="button" onClick={() => startCategoryForm(categoryKind)}>Tạo nhóm khác</button>}
               </form>

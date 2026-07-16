@@ -35,6 +35,7 @@ import {
   getCategorySpent,
   hasMeaningfulFinanceData,
   normalizeFinanceState,
+  reconcileSavingsFundingTransactions,
 } from "@/lib/finance";
 import {
   DEFAULT_EXCHANGE_SETTINGS,
@@ -44,6 +45,7 @@ import {
   normalizeExchangeSettings,
   normalizeFinancialGoals,
 } from "@/lib/planning";
+import { buildSavingsTrend } from "@/lib/savings-trend";
 
 const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
 const SAVINGS_KEY = "savings";
@@ -61,6 +63,14 @@ const MAX_BACKUP_SIZE = 5_000_000;
 const INTEREST_DEDUCTION_RATE = 0.05;
 const AVERAGE_DAYS_PER_MONTH = 365 / 12;
 const MAX_GOAL_MONTHS = 1_200;
+const SAVINGS_TREND_CHART = {
+  bottom: 248,
+  height: 270,
+  left: 76,
+  right: 902,
+  top: 18,
+  width: 920,
+} as const;
 
 type FormMode = "add" | "edit" | "reinvest";
 type AppWorkspace = "savings" | "finance" | "goals";
@@ -788,12 +798,17 @@ function parseBackupPayload(value: unknown): BackupPayload | null {
     financialGoals: rawFinancialGoals,
   });
   if (!core) return null;
+  const repairedFinance = reconcileSavingsFundingTransactions(
+    core.finance,
+    core.savings,
+  );
 
   return {
     app: BACKUP_APP_ID,
     version: BACKUP_FORMAT_VERSION,
     exportedAt: value.exportedAt,
     ...core,
+    finance: repairedFinance,
     versionHistory: normalizeVersionHistory(rawVersionHistory),
   };
 }
@@ -936,6 +951,13 @@ function formatCompactMoney(amount: number) {
   }).format(amount)} ₫`;
 }
 
+function formatTrendMonth(monthKey: string, includeYear = false) {
+  const [, month] = monthKey.split("-").map(Number);
+  return includeYear
+    ? "T" + month + "/" + monthKey.slice(2, 4)
+    : "T" + month;
+}
+
 function formatMaturityDistance(date: string, today: string) {
   const difference = signedDaysBetween(today, date);
   if (difference < 0) return `Quá hạn ${Math.abs(difference)} ngày`;
@@ -1031,6 +1053,9 @@ export default function Home() {
   const [goalMonthlyContribution, setGoalMonthlyContribution] = useState("");
   const [cashflowPeriod, setCashflowPeriod] = useState<CashflowPeriod>(12);
   const [selectedCashflowMonth, setSelectedCashflowMonth] = useState(
+    getMonthKey(getTodayIso()),
+  );
+  const [selectedSavingsTrendMonth, setSelectedSavingsTrendMonth] = useState(
     getMonthKey(getTodayIso()),
   );
   const cloudConfigured = isCloudConfigured();
@@ -1133,7 +1158,10 @@ export default function Home() {
       interestRate: storedGoal?.interestRate ?? "",
       monthlyContribution: storedGoal?.monthlyContribution ?? "",
     };
-    const localFinance = normalizeFinanceState(storedFinance);
+    const localFinance = reconcileSavingsFundingTransactions(
+      normalizeFinanceState(storedFinance),
+      localSavings,
+    );
     const localExchange = normalizeExchangeSettings(storedExchange);
     const localFinancialGoals = normalizeFinancialGoals(storedFinancialGoals);
     const localVersionHistory = normalizeVersionHistory(storedVersionHistory);
@@ -1584,6 +1612,112 @@ export default function Home() {
   );
 
   const today = getTodayIso();
+  const savingsTrend = useMemo(
+    () => buildSavingsTrend(savings, today, 12),
+    [savings, today],
+  );
+  const selectedSavingsTrend =
+    savingsTrend.find((point) => point.key === selectedSavingsTrendMonth) ??
+    savingsTrend.at(-1);
+  const selectedSavingsTrendIndex = selectedSavingsTrend
+    ? savingsTrend.findIndex((point) => point.key === selectedSavingsTrend.key)
+    : -1;
+  const previousSavingsTrend =
+    selectedSavingsTrendIndex > 0
+      ? savingsTrend[selectedSavingsTrendIndex - 1]
+      : null;
+  const savingsTrendStart = savingsTrend[0]?.value ?? 0;
+  const savingsTrendCurrent = savingsTrend.at(-1)?.value ?? 0;
+  const savingsTrendChange = savingsTrendCurrent - savingsTrendStart;
+  const savingsTrendPercent =
+    savingsTrendStart > 0
+      ? (savingsTrendChange / savingsTrendStart) * 100
+      : null;
+  const selectedSavingsTrendChange =
+    selectedSavingsTrend && previousSavingsTrend
+      ? selectedSavingsTrend.value - previousSavingsTrend.value
+      : null;
+  const savingsTrendValues = savingsTrend.map((point) => point.value);
+  const savingsTrendHasData = savingsTrendValues.some((value) => value > 0);
+  const savingsTrendRawMin = savingsTrendHasData
+    ? Math.min(...savingsTrendValues)
+    : 0;
+  const savingsTrendRawMax = savingsTrendHasData
+    ? Math.max(...savingsTrendValues)
+    : 1;
+  const savingsTrendPadding = Math.max(
+    1,
+    (savingsTrendRawMax - savingsTrendRawMin) * 0.12,
+    savingsTrendRawMax * 0.015,
+  );
+  const savingsTrendMin =
+    savingsTrendRawMin === 0
+      ? 0
+      : Math.max(0, savingsTrendRawMin - savingsTrendPadding);
+  const savingsTrendMax = savingsTrendRawMax + savingsTrendPadding;
+  const savingsTrendRange = Math.max(1, savingsTrendMax - savingsTrendMin);
+  const savingsTrendPlotWidth =
+    SAVINGS_TREND_CHART.right - SAVINGS_TREND_CHART.left;
+  const savingsTrendPlotHeight =
+    SAVINGS_TREND_CHART.bottom - SAVINGS_TREND_CHART.top;
+  const savingsTrendChartPoints = savingsTrend.map((point, index) => ({
+    ...point,
+    x:
+      SAVINGS_TREND_CHART.left +
+      (index / Math.max(1, savingsTrend.length - 1)) * savingsTrendPlotWidth,
+    y:
+      SAVINGS_TREND_CHART.top +
+      ((savingsTrendMax - point.value) / savingsTrendRange) *
+        savingsTrendPlotHeight,
+  }));
+  const savingsTrendLinePath = savingsTrendChartPoints
+    .map(
+      (point, index) =>
+        (index ? "L " : "M ") +
+        point.x.toFixed(2) +
+        " " +
+        point.y.toFixed(2),
+    )
+    .join(" ");
+  const savingsTrendAreaPath = savingsTrendChartPoints.length
+    ? savingsTrendLinePath +
+      " L " +
+      savingsTrendChartPoints.at(-1)!.x.toFixed(2) +
+      " " +
+      SAVINGS_TREND_CHART.bottom +
+      " L " +
+      savingsTrendChartPoints[0].x.toFixed(2) +
+      " " +
+      SAVINGS_TREND_CHART.bottom +
+      " Z"
+    : "";
+  const selectedSavingsTrendChartPoint =
+    selectedSavingsTrendIndex >= 0
+      ? savingsTrendChartPoints[selectedSavingsTrendIndex]
+      : null;
+  const savingsTrendTooltipX = selectedSavingsTrendChartPoint
+    ? selectedSavingsTrendChartPoint.x > SAVINGS_TREND_CHART.width - 226
+      ? selectedSavingsTrendChartPoint.x - 206
+      : selectedSavingsTrendChartPoint.x + 12
+    : 0;
+  const savingsTrendTooltipY = selectedSavingsTrendChartPoint
+    ? Math.max(
+        8,
+        Math.min(
+          selectedSavingsTrendChartPoint.y - 76,
+          SAVINGS_TREND_CHART.height - 76,
+        ),
+      )
+    : 0;
+  const savingsTrendTicks = Array.from({ length: 4 }, (_, index) => {
+    const value = savingsTrendMax - (index / 3) * savingsTrendRange;
+    return {
+      value,
+      y:
+        SAVINGS_TREND_CHART.top +
+        (index / 3) * savingsTrendPlotHeight,
+    };
+  });
 
   const summary = useMemo(() => {
     const principal = activeSavings.reduce((sum, item) => sum + item.amount, 0);
@@ -1845,10 +1979,7 @@ export default function Home() {
       status: "active",
     };
 
-    if (
-      mode === "add" ||
-      (mode === "edit" && previousHistory.length === 0)
-    ) {
+    if (mode === "add" || mode === "edit") {
       const fundingTransactionId = `savings-${item.id}-initial`;
       setFinance((current) => {
         const existing = current.transactions.find(
@@ -1863,13 +1994,17 @@ export default function Home() {
             candidate.currency === "VND",
         );
         if (!account) return { ...current, transactions };
+        const historicalEntry =
+          mode === "edit" && previousHistory.length > 0
+            ? existing
+            : undefined;
         return {
           ...current,
           transactions: [
             createSavingsFinanceTransaction({
               accountId: account.id,
-              amount: item.amount,
-              date: item.startDate,
+              amount: historicalEntry?.amount ?? item.amount,
+              date: historicalEntry?.date ?? item.startDate,
               id: fundingTransactionId,
               note: `Gửi ${item.name}${item.bankName ? ` · ${item.bankName}` : ""}`,
               savingsId: item.id,
@@ -2188,16 +2323,20 @@ export default function Home() {
   }
 
   function applyCoreState(core: AppStateCore) {
-    lastCoreSignatureRef.current = JSON.stringify(core);
-    setSavings(core.savings);
-    setInterestRates(core.interestRates);
-    setCashLedger(core.cashLedger);
-    setFinance(core.finance);
-    setGoalMonthlyInterest(core.goal.monthlyInterest);
-    setGoalInterestRate(core.goal.interestRate);
-    setGoalMonthlyContribution(core.goal.monthlyContribution);
-    setExchangeSettings(core.exchange);
-    setFinancialGoals(core.financialGoals);
+    const repairedCore = {
+      ...core,
+      finance: reconcileSavingsFundingTransactions(core.finance, core.savings),
+    };
+    lastCoreSignatureRef.current = JSON.stringify(repairedCore);
+    setSavings(repairedCore.savings);
+    setInterestRates(repairedCore.interestRates);
+    setCashLedger(repairedCore.cashLedger);
+    setFinance(repairedCore.finance);
+    setGoalMonthlyInterest(repairedCore.goal.monthlyInterest);
+    setGoalInterestRate(repairedCore.goal.interestRate);
+    setGoalMonthlyContribution(repairedCore.goal.monthlyContribution);
+    setExchangeSettings(repairedCore.exchange);
+    setFinancialGoals(repairedCore.financialGoals);
   }
 
   function restoreVersion(version: AppVersion) {
@@ -3247,6 +3386,266 @@ export default function Home() {
                 </small>
               </div>
             </article>
+          </div>
+          <div
+            className={
+              "savings-trend-card " +
+              (savingsTrendChange < 0 ? "decline" : "growth")
+            }
+            aria-labelledby="savings-trend-title"
+          >
+            <div className="savings-trend-heading">
+              <div>
+                <span className="savings-trend-kicker">12 THÁNG QUA</span>
+                <h3 id="savings-trend-title">Tăng trưởng tiền tiết kiệm</h3>
+                <p>Giá trị gốc cộng lãi ròng tích lũy tại từng thời điểm.</p>
+              </div>
+              <div className="savings-trend-current">
+                <span>Hiện tại</span>
+                <strong>{formatCurrency(savingsTrendCurrent)}</strong>
+                <small>
+                  <span aria-hidden="true">
+                    {savingsTrendChange < 0 ? "▼" : "▲"}
+                  </span>{" "}
+                  {savingsTrendChange >= 0 ? "+" : ""}
+                  {formatCurrency(savingsTrendChange)}
+                  {savingsTrendPercent === null
+                    ? " · bắt đầu trong kỳ"
+                    : " · " +
+                      (savingsTrendPercent >= 0 ? "+" : "") +
+                      formatRate(savingsTrendPercent) +
+                      "%"}
+                </small>
+              </div>
+            </div>
+
+            <div className="savings-trend-plot">
+              <svg
+                className="savings-trend-svg"
+                viewBox={
+                  "0 0 " +
+                  SAVINGS_TREND_CHART.width +
+                  " " +
+                  SAVINGS_TREND_CHART.height
+                }
+                preserveAspectRatio="none"
+                role="img"
+                aria-label={
+                  "Biểu đồ giá trị tiền tiết kiệm trong 12 tháng, từ " +
+                  formatMonthTitle(savingsTrend[0]?.key ?? getMonthKey(today)) +
+                  " đến " +
+                  formatMonthTitle(savingsTrend.at(-1)?.key ?? getMonthKey(today))
+                }
+                aria-describedby="savings-trend-note"
+              >
+                <defs>
+                  <linearGradient
+                    id="savings-trend-area-fill"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor="currentColor" stopOpacity="0.24" />
+                    <stop offset="100%" stopColor="currentColor" stopOpacity="0.015" />
+                  </linearGradient>
+                </defs>
+
+                {savingsTrendTicks.map((tick) => (
+                  <g className="savings-trend-grid" key={tick.y}>
+                    <line
+                      x1={SAVINGS_TREND_CHART.left}
+                      x2={SAVINGS_TREND_CHART.right}
+                      y1={tick.y}
+                      y2={tick.y}
+                    />
+                    <text
+                      x={SAVINGS_TREND_CHART.left - 11}
+                      y={tick.y + 4}
+                      textAnchor="end"
+                    >
+                      {formatCompactMoney(tick.value)}
+                    </text>
+                  </g>
+                ))}
+
+                <path
+                  className="savings-trend-area"
+                  d={savingsTrendAreaPath}
+                  fill="url(#savings-trend-area-fill)"
+                />
+                <path
+                  className="savings-trend-line"
+                  d={savingsTrendLinePath}
+                  fill="none"
+                />
+
+                {selectedSavingsTrendChartPoint && (
+                  <g className="savings-trend-selection" aria-hidden="true">
+                    <line
+                      x1={selectedSavingsTrendChartPoint.x}
+                      x2={selectedSavingsTrendChartPoint.x}
+                      y1={SAVINGS_TREND_CHART.top}
+                      y2={SAVINGS_TREND_CHART.bottom}
+                    />
+                    <circle
+                      cx={selectedSavingsTrendChartPoint.x}
+                      cy={selectedSavingsTrendChartPoint.y}
+                      r="6"
+                    />
+                  </g>
+                )}
+
+                {savingsTrendChartPoints.map((point, index) => {
+                  const isSelected =
+                    point.key === selectedSavingsTrend?.key;
+                  return (
+                    <g
+                      className={
+                        "savings-trend-point" +
+                        (isSelected ? " selected" : "")
+                      }
+                      key={point.key}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={
+                        formatMonthTitle(point.key) +
+                        ": " +
+                        formatCurrency(point.value) +
+                        ", " +
+                        point.activeCount +
+                        " khoản tiết kiệm"
+                      }
+                      onClick={() => setSelectedSavingsTrendMonth(point.key)}
+                      onFocus={() => setSelectedSavingsTrendMonth(point.key)}
+                      onPointerEnter={() =>
+                        setSelectedSavingsTrendMonth(point.key)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedSavingsTrendMonth(point.key);
+                        }
+                      }}
+                    >
+                      <circle
+                        className="savings-trend-hit"
+                        cx={point.x}
+                        cy={point.y}
+                        r="15"
+                      />
+                      <circle
+                        className="savings-trend-dot"
+                        cx={point.x}
+                        cy={point.y}
+                        r={isSelected ? 5 : 3}
+                      />
+                      {(index === 0 ||
+                        index === savingsTrendChartPoints.length - 1 ||
+                        index % 3 === 0) && (
+                        <text
+                          className="savings-trend-month"
+                          x={point.x}
+                          y={SAVINGS_TREND_CHART.height - 5}
+                          textAnchor={
+                            index === 0
+                              ? "start"
+                              : index === savingsTrendChartPoints.length - 1
+                                ? "end"
+                                : "middle"
+                          }
+                        >
+                          {formatTrendMonth(
+                            point.key,
+                            index === 0 ||
+                              index === savingsTrendChartPoints.length - 1,
+                          )}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {selectedSavingsTrendChartPoint && selectedSavingsTrend && (
+                  <g
+                    className="savings-trend-tooltip"
+                    transform={
+                      "translate(" +
+                      savingsTrendTooltipX +
+                      " " +
+                      savingsTrendTooltipY +
+                      ")"
+                    }
+                    aria-hidden="true"
+                  >
+                    <rect width="194" height="68" rx="9" />
+                    <text className="tooltip-month" x="12" y="18">
+                      {formatMonthTitle(selectedSavingsTrend.key)}
+                    </text>
+                    <text className="tooltip-value" x="12" y="39">
+                      {formatCompactMoney(selectedSavingsTrend.value)}
+                    </text>
+                    <text className="tooltip-change" x="12" y="57">
+                      {selectedSavingsTrendChange === null
+                        ? "Mốc đầu tiên"
+                        : "So với tháng trước " +
+                          (selectedSavingsTrendChange >= 0 ? "+" : "") +
+                          formatCompactMoney(selectedSavingsTrendChange)}
+                    </text>
+                  </g>
+                )}
+              </svg>
+              {!savingsTrendHasData && (
+                <div className="savings-trend-empty">
+                  <span aria-hidden="true">⌁</span>
+                  <p>Thêm khoản gửi để bắt đầu theo dõi đường tăng trưởng.</p>
+                </div>
+              )}
+            </div>
+
+            {selectedSavingsTrend && (
+              <div className="savings-trend-detail" aria-live="polite">
+                <div>
+                  <span>Đang xem</span>
+                  <strong>{formatMonthTitle(selectedSavingsTrend.key)}</strong>
+                </div>
+                <div>
+                  <span>Giá trị</span>
+                  <strong>{formatCurrency(selectedSavingsTrend.value)}</strong>
+                </div>
+                <div>
+                  <span>Thay đổi tháng</span>
+                  <strong
+                    className={
+                      selectedSavingsTrendChange !== null &&
+                      selectedSavingsTrendChange < 0
+                        ? "negative"
+                        : "positive"
+                    }
+                  >
+                    {selectedSavingsTrendChange === null
+                      ? "—"
+                      : (selectedSavingsTrendChange >= 0 ? "+" : "") +
+                        formatCurrency(selectedSavingsTrendChange)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Cấu thành</span>
+                  <strong>
+                    {formatCurrency(selectedSavingsTrend.principal)} gốc
+                  </strong>
+                  <small>
+                    +{formatCurrency(selectedSavingsTrend.interest)} lãi ·{" "}
+                    {selectedSavingsTrend.activeCount} khoản
+                  </small>
+                </div>
+              </div>
+            )}
+            <p className="savings-trend-note" id="savings-trend-note">
+              Mỗi điểm là cuối tháng; tháng hiện tại tính đến hôm nay. Khoản đã
+              tất toán rời khỏi biểu đồ từ ngày tất toán, còn tái đầu tư tiếp tục
+              theo kỳ mới.
+            </p>
           </div>
           <article className="today-interest-card">
             <div className="today-interest-heading">
