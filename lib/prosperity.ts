@@ -14,6 +14,7 @@ export type ProsperityItem = {
   name: string;
   amount: number;
   annualInterestRate: number;
+  termDays: number;
   termWeeks: number;
   startDate: string;
   harvestDate: string;
@@ -35,8 +36,9 @@ export function calculateProsperity(
   annualInterestRate: number,
   termWeeks: number,
   startDate: string,
+  termDays = 0,
 ): ProsperityCalculation {
-  const days = termWeeks * 7;
+  const days = termWeeks * 7 + termDays;
   const harvestDate = addDays(startDate, days);
   const projectedProfit =
     amount * (annualInterestRate / 100) * (days / 365);
@@ -75,7 +77,7 @@ export function getProsperityProgress(
   item: ProsperityItem,
   today = getTodayIso(),
 ) {
-  const totalDays = Math.max(1, item.termWeeks * 7);
+  const totalDays = Math.max(1, item.termWeeks * 7 + (item.termDays ?? 0));
   const elapsedDays = Math.min(
     totalDays,
     Math.max(0, signedDaysBetween(item.startDate, today)),
@@ -99,11 +101,13 @@ export function recalculateProsperityItem(
 ): ProsperityItem {
   return {
     ...item,
+    termDays: item.termDays ?? 0,
     ...calculateProsperity(
       item.amount,
       item.annualInterestRate,
       item.termWeeks,
       item.startDate,
+      item.termDays ?? 0,
     ),
     status: item.status === "harvested" ? "harvested" : "growing",
   };
@@ -129,6 +133,7 @@ export function normalizeProsperityItem(
   const amount = Number(item.amount);
   const annualInterestRate = Number(item.annualInterestRate);
   const termWeeks = Number(item.termWeeks);
+  const termDays = item.termDays === undefined ? 0 : Number(item.termDays);
   const status: ProsperityStatus =
     item.status === 'harvested' ? 'harvested' : 'growing';
   const harvestedAt = isValidIsoDate(item.harvestedAt)
@@ -143,8 +148,12 @@ export function normalizeProsperityItem(
     annualInterestRate <= 0 ||
     annualInterestRate > 100 ||
     !Number.isInteger(termWeeks) ||
-    termWeeks < 1 ||
+    termWeeks < 0 ||
     termWeeks > 260 ||
+    !Number.isInteger(termDays) ||
+    termDays < 0 ||
+    termDays > 6 ||
+    termWeeks * 7 + termDays < 1 ||
     !isValidIsoDate(item.startDate)
   ) {
     return null;
@@ -152,9 +161,10 @@ export function normalizeProsperityItem(
 
   return recalculateProsperityItem({
     id: id.slice(0, 120),
-    name: (name || `Phát lộc ${termWeeks} tuần`).slice(0, 200),
+    name: (name || `Phát lộc ${formatProsperityTerm(termWeeks, termDays)}`).slice(0, 200),
     amount,
     annualInterestRate,
+    termDays,
     termWeeks,
     startDate: item.startDate,
     harvestDate: '',
@@ -163,4 +173,13 @@ export function normalizeProsperityItem(
     status,
     ...(harvestedAt ? { harvestedAt } : {}),
   });
+}
+
+export function formatProsperityTerm(termWeeks: number, termDays = 0) {
+  return [
+    termWeeks > 0 ? `${termWeeks} tuần` : '',
+    termDays > 0 ? `${termDays} ngày` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }

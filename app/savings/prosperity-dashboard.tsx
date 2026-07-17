@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import {
   calculateProsperity,
   calculateProsperityValueOnDate,
+  formatProsperityTerm,
   getProsperityProgress,
   type ProsperityItem,
 } from '@/lib/prosperity';
@@ -22,6 +23,7 @@ type ProsperityForm = {
   annualInterestRate: string;
   name: string;
   startDate: string;
+  termDays: string;
   termWeeks: string;
 };
 
@@ -31,6 +33,7 @@ function createForm(today: string): ProsperityForm {
     annualInterestRate: '7.5',
     name: '',
     startDate: today,
+    termDays: '0',
     termWeeks: '10',
   };
 }
@@ -52,16 +55,26 @@ export default function ProsperityDashboard({
   const [message, setMessage] = useState('');
 
   const amount = parseAmount(form.amount);
-  const annualInterestRate = Number(form.annualInterestRate);
+  const annualInterestRateInput = Number(form.annualInterestRate);
+  const annualInterestRate =
+    Math.round(annualInterestRateInput * 100) / 100;
+  const hasValidInterestRatePrecision =
+    /^\d+(?:\.\d{0,2})?$/.test(form.annualInterestRate);
+  const termDays = Number(form.termDays);
   const termWeeks = Number(form.termWeeks);
   const preview = useMemo(() => {
     if (
       amount <= 0 ||
+      !hasValidInterestRatePrecision ||
       annualInterestRate <= 0 ||
       annualInterestRate > 100 ||
       !Number.isInteger(termWeeks) ||
-      termWeeks < 1 ||
+      termWeeks < 0 ||
       termWeeks > 260 ||
+      !Number.isInteger(termDays) ||
+      termDays < 0 ||
+      termDays > 6 ||
+      termWeeks * 7 + termDays < 1 ||
       !form.startDate
     ) {
       return null;
@@ -71,8 +84,16 @@ export default function ProsperityDashboard({
       annualInterestRate,
       termWeeks,
       form.startDate,
+      termDays,
     );
-  }, [amount, annualInterestRate, form.startDate, termWeeks]);
+  }, [
+    amount,
+    annualInterestRate,
+    form.startDate,
+    hasValidInterestRatePrecision,
+    termDays,
+    termWeeks,
+  ]);
 
   const activeItems = useMemo(
     () => items.filter((item) => item.status === 'growing'),
@@ -110,15 +131,18 @@ export default function ProsperityDashboard({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!preview) {
-      setMessage('Kiểm tra lại số tiền, lãi suất, số tuần và ngày bắt đầu.');
+      setMessage('Kiểm tra lại số tiền, lãi suất, thời hạn và ngày bắt đầu.');
       return;
     }
 
     const item: ProsperityItem = {
       id: `prosperity-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: form.name.trim() || `Phát lộc ${termWeeks} tuần`,
+      name:
+        form.name.trim() ||
+        `Phát lộc ${formatProsperityTerm(termWeeks, termDays)}`,
       amount,
       annualInterestRate,
+      termDays,
       termWeeks,
       startDate: form.startDate,
       ...preview,
@@ -126,7 +150,9 @@ export default function ProsperityDashboard({
     };
     onAdd(item);
     setForm(createForm(today));
-    setMessage(`Đã gieo ${formatCurrency(amount)} trong ${termWeeks} tuần.`);
+    setMessage(
+      `Đã gieo ${formatCurrency(amount)} trong ${formatProsperityTerm(termWeeks, termDays)}.`,
+    );
   }
 
   function confirmDelete(item: ProsperityItem) {
@@ -178,14 +204,16 @@ export default function ProsperityDashboard({
       <section className='prosperity-create-card' aria-labelledby='prosperity-create-title'>
         <div className='prosperity-create-copy'>
           <span className='prosperity-kicker'>GIEO MỘT KHOẢN MỚI</span>
-          <h2 id='prosperity-create-title'>Nhập tiền, chọn số tuần</h2>
+          <h2 id='prosperity-create-title'>Nhập tiền, chọn thời hạn</h2>
           <p>
             Không có chợ hay hạt giống ảo. Mỗi lần nhập là một khoản Phát lộc
             độc lập, có ngày thu hoạch và lợi nhuận dự kiến rõ ràng.
           </p>
           <div className='prosperity-formula'>
             <span>Cách tính</span>
-            <strong>Gốc × lãi suất năm × (số tuần × 7) / 365</strong>
+            <strong>
+              Gốc × lãi suất năm × ((số tuần × 7) + số ngày) / 365
+            </strong>
             <small>Lãi đơn dự kiến, chưa trừ phí hoặc thuế nếu có.</small>
           </div>
         </div>
@@ -197,7 +225,7 @@ export default function ProsperityDashboard({
               value={form.name}
               maxLength={200}
               onChange={(event) => updateForm('name', event.target.value)}
-              placeholder={`Ví dụ: Phát lộc ${form.termWeeks || 10} tuần`}
+              placeholder='Ví dụ: Phát lộc 12 tuần 4 ngày'
             />
           </label>
           <label>
@@ -223,23 +251,47 @@ export default function ProsperityDashboard({
                   key={weeks}
                   type='button'
                   aria-pressed={form.termWeeks === String(weeks)}
-                  onClick={() => updateForm('termWeeks', String(weeks))}
+                  onClick={() => {
+                    setForm((current) => ({
+                      ...current,
+                      termDays: '0',
+                      termWeeks: String(weeks),
+                    }));
+                    setMessage('');
+                  }}
                 >
                   {weeks} tuần
                 </button>
               ))}
             </div>
-            <label className='custom-week-field'>
-              Hoặc nhập số tuần
-              <input
-                type='number'
-                min='1'
-                max='260'
-                step='1'
-                value={form.termWeeks}
-                onChange={(event) => updateForm('termWeeks', event.target.value)}
-              />
-            </label>
+            <div className='prosperity-duration-fields'>
+              <label>
+                Số tuần
+                <input
+                  type='number'
+                  min='0'
+                  max='260'
+                  step='1'
+                  value={form.termWeeks}
+                  onChange={(event) =>
+                    updateForm('termWeeks', event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                Số ngày thêm
+                <input
+                  type='number'
+                  min='0'
+                  max='6'
+                  step='1'
+                  value={form.termDays}
+                  onChange={(event) =>
+                    updateForm('termDays', event.target.value)
+                  }
+                />
+              </label>
+            </div>
           </fieldset>
           <div className='prosperity-form-row'>
             <label>
@@ -250,6 +302,7 @@ export default function ProsperityDashboard({
                   min='0.01'
                   max='100'
                   step='0.01'
+                  placeholder='7.69'
                   value={form.annualInterestRate}
                   onChange={(event) =>
                     updateForm('annualInterestRate', event.target.value)
@@ -257,6 +310,7 @@ export default function ProsperityDashboard({
                 />
                 <span>%</span>
               </span>
+              <small>Tối đa 2 chữ số sau dấu thập phân, ví dụ 7.69%.</small>
             </label>
             <label>
               Ngày bắt đầu
@@ -359,7 +413,8 @@ export default function ProsperityDashboard({
                   <div className='prosperity-timeline'>
                     <div className='prosperity-progress-copy'>
                       <span>
-                        {item.termWeeks} tuần · bắt đầu {formatDate(item.startDate)}
+                        {formatProsperityTerm(item.termWeeks, item.termDays)} · bắt đầu{' '}
+                        {formatDate(item.startDate)}
                       </span>
                       <strong>
                         {harvested

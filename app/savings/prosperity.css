@@ -226,7 +226,13 @@
 .prosperity-form label + label,
 .prosperity-form fieldset,
 .prosperity-form-row { margin-top: 15px; }
-.prosperity-form label small { color: #8b8492; font-weight: 500; }
+.prosperity-form label small {
+  display: block;
+  margin-top: 5px;
+  color: #8b8492;
+  font-size: 0.64rem;
+  font-weight: 500;
+}
 .prosperity-form input {
   width: 100%;
   height: 46px;
@@ -264,16 +270,12 @@
   background: var(--prosperity);
   border-color: var(--prosperity);
 }
-.prosperity-form .custom-week-field {
+.prosperity-duration-fields {
   display: grid;
-  grid-template-columns: 1fr 90px;
-  align-items: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 9px;
-  color: #847c8c;
-  font-weight: 600;
+  margin-top: 12px;
 }
-.prosperity-form .custom-week-field input { margin-top: 0; }
 .prosperity-form-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -474,6 +476,7 @@
   .product-option-title,
   .product-option-balance { align-items: flex-start; flex-direction: column; gap: 3px; }
   .prosperity-form-row,
+  .prosperity-duration-fields,
   .prosperity-preview,
   .prosperity-item-values { grid-template-columns: 1fr; }
   .prosperity-preview > p { grid-column: auto; }
