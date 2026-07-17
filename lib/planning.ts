@@ -48,6 +48,7 @@ export type NetWorthSnapshot = {
   accountVnd: number;
   baseCurrency: FinanceCurrency;
   liquidInBase: number;
+  prosperityInBase: number;
   savingsInBase: number;
   totalInBase: number;
   walletInBase: number;
@@ -167,6 +168,7 @@ export function calculateNetWorth(
   savingsValueVnd: number,
   walletValueVnd: number,
   settings: ExchangeRateSettings,
+  prosperityValueVnd = 0,
 ): NetWorthSnapshot {
   const totals = calculateTotalsByCurrency(finance);
   const liquidInBase =
@@ -184,13 +186,21 @@ export function calculateNetWorth(
     settings.baseCurrency,
     settings,
   );
+  const prosperityInBase = convertCurrency(
+    prosperityValueVnd,
+    "VND",
+    settings.baseCurrency,
+    settings,
+  );
   return {
     accountKrw: totals.KRW,
     accountVnd: totals.VND,
     baseCurrency: settings.baseCurrency,
     liquidInBase,
+    prosperityInBase,
     savingsInBase,
-    totalInBase: liquidInBase + savingsInBase + walletInBase,
+    totalInBase:
+      liquidInBase + savingsInBase + prosperityInBase + walletInBase,
     walletInBase,
   };
 }

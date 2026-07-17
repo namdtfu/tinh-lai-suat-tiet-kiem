@@ -556,7 +556,7 @@ test("linked savings movements update account balance without changing income or
   });
 });
 
-test("linked Phát lộc investment reduces its VND source balance without becoming an expense", () => {
+test("linked Phát lộc funding and harvest update the VND account without becoming income or expense", () => {
   const prosperityDeposit = transaction({
     id: "prosperity-funding",
     type: "prosperity-deposit",
@@ -565,26 +565,35 @@ test("linked Phát lộc investment reduces its VND source balance without becom
     categoryId: undefined,
     linkedProsperityId: "prosperity-101",
   });
+  const prosperitySettlement = transaction({
+    id: "prosperity-settlement",
+    type: "prosperity-settlement",
+    amount: 26_000,
+    accountId: vndBank.id,
+    categoryId: undefined,
+    linkedProsperityId: "prosperity-101",
+  });
   const state = normalizeFinanceState({
     accounts: [vndBank],
     categories: [],
     budgets: [],
-    transactions: [prosperityDeposit],
+    transactions: [prosperityDeposit, prosperitySettlement],
   });
 
-  assert.equal(state.transactions.length, 1);
+  assert.equal(state.transactions.length, 2);
   assert.equal(state.transactions[0].linkedProsperityId, "prosperity-101");
-  assert.equal(calculateAccountBalance(vndBank, state.transactions), 75_000);
+  assert.equal(state.transactions[1].linkedProsperityId, "prosperity-101");
+  assert.equal(calculateAccountBalance(vndBank, state.transactions), 101_000);
   assert.deepEqual(summarizeFinanceMonth(state, "2026-07", "VND"), {
     currency: "VND",
     income: 0,
     expense: 0,
     net: 0,
-    transactionCount: 1,
+    transactionCount: 2,
   });
 });
 
-test("repairs a missing Phát lộc funding transaction without creating duplicates", () => {
+test("repairs missing Phát lộc funding and harvest transactions without creating duplicates", () => {
   const state = {
     accounts: [vndBank],
     categories: [],
@@ -598,17 +607,22 @@ test("repairs a missing Phát lộc funding transaction without creating duplica
     amount: 25_000,
     startDate: "2026-07-17",
     fundingAccountId: vndBank.id,
-    status: "growing",
+    settlementAccountId: vndBank.id,
+    status: "harvested",
+    harvestedAt: "2026-09-25",
+    projectedTotal: 26_000,
   }];
 
   const repaired = reconcileProsperityFundingTransactions(state, sources);
-  assert.equal(repaired.transactions.length, 1);
+  assert.equal(repaired.transactions.length, 2);
   assert.equal(repaired.transactions[0].type, "prosperity-deposit");
   assert.equal(repaired.transactions[0].linkedProsperityId, "prosperity-202");
-  assert.equal(calculateAccountBalance(vndBank, repaired.transactions), 75_000);
+  assert.equal(repaired.transactions[1].type, "prosperity-settlement");
+  assert.equal(repaired.transactions[1].linkedProsperityId, "prosperity-202");
+  assert.equal(calculateAccountBalance(vndBank, repaired.transactions), 101_000);
 
   const repairedAgain = reconcileProsperityFundingTransactions(repaired, sources);
-  assert.equal(repairedAgain.transactions.length, 1);
+  assert.equal(repairedAgain.transactions.length, 2);
 });
 
 test("repairs missing deposits for active reinvested savings without creating duplicates", () => {
@@ -741,12 +755,59 @@ test("net worth converts KRW accounts and combines liquid cash with savings", ()
     200_000,
     50_000,
     { baseCurrency: "VND", krwToVndRate: 20, source: "actual", updatedAt: "" },
+    80_000,
   );
 
   assert.equal(snapshot.liquidInBase, 300_000);
   assert.equal(snapshot.savingsInBase, 200_000);
+  assert.equal(snapshot.prosperityInBase, 80_000);
   assert.equal(snapshot.walletInBase, 50_000);
-  assert.equal(snapshot.totalInBase, 550_000);
+  assert.equal(snapshot.totalInBase, 630_000);
+});
+
+test("net worth stays continuous when Phát lộc moves out of and back into an account", () => {
+  const settings = {
+    baseCurrency: "VND",
+    krwToVndRate: 20,
+    source: "actual",
+    updatedAt: "",
+  };
+  const initialFinance = {
+    accounts: [vndBank],
+    categories: [],
+    transactions: [],
+    budgets: [],
+    budgetPlans: [],
+  };
+  const growingFinance = {
+    ...initialFinance,
+    transactions: [transaction({
+      id: "prosperity-flow-funding",
+      type: "prosperity-deposit",
+      amount: 25_000,
+      accountId: vndBank.id,
+      categoryId: undefined,
+      linkedProsperityId: "prosperity-flow",
+    })],
+  };
+  const harvestedFinance = {
+    ...growingFinance,
+    transactions: [
+      ...growingFinance.transactions,
+      transaction({
+        id: "prosperity-flow-settlement",
+        type: "prosperity-settlement",
+        amount: 26_000,
+        accountId: vndBank.id,
+        categoryId: undefined,
+        linkedProsperityId: "prosperity-flow",
+      }),
+    ],
+  };
+
+  assert.equal(calculateNetWorth(initialFinance, 0, 0, settings).totalInBase, 100_000);
+  assert.equal(calculateNetWorth(growingFinance, 0, 0, settings, 26_000).totalInBase, 101_000);
+  assert.equal(calculateNetWorth(harvestedFinance, 0, 0, settings).totalInBase, 101_000);
 });
 
 test("monthly budget rolls unused money forward and forecasts month end", () => {

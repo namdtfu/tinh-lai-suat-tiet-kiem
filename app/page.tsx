@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import {
+  calculateProsperityValueOnDate,
   normalizeProsperityItem,
   type ProsperityItem,
 } from '@/lib/prosperity';
@@ -866,6 +867,15 @@ export default function Home() {
   );
 
   const today = getTodayIso();
+  const prosperityCurrentValue = useMemo(
+    () =>
+      activeProsperityItems.reduce(
+        (sum, item) =>
+          sum + calculateProsperityValueOnDate(item, today).totalValue,
+        0,
+      ),
+    [activeProsperityItems, today],
+  );
 
   const summary = useMemo(() => {
     const principal = activeSavings.reduce((sum, item) => sum + item.amount, 0);
@@ -1290,12 +1300,16 @@ export default function Home() {
       const existing = current.transactions.find(
         (transaction) =>
           transaction.id === transactionId ||
-          transaction.linkedProsperityId === item.id,
+          (transaction.type === 'prosperity-deposit' &&
+            transaction.linkedProsperityId === item.id),
       );
       const transactions = current.transactions.filter(
         (transaction) =>
           transaction.id !== transactionId &&
-          transaction.linkedProsperityId !== item.id,
+          !(
+            transaction.type === 'prosperity-deposit' &&
+            transaction.linkedProsperityId === item.id
+          ),
       );
       const account = current.accounts.find(
         (candidate) =>
@@ -1326,13 +1340,72 @@ export default function Home() {
   }
 
   function handleHarvestProsperity(id: string) {
+    const item = prosperityItems.find(
+      (candidate) => candidate.id === id && candidate.status === 'growing',
+    );
+    if (!item) return false;
+
+    const settlementAccount =
+      finance.accounts.find(
+        (account) =>
+          account.id === item.settlementAccountId &&
+          account.currency === 'VND',
+      ) ??
+      finance.accounts.find(
+        (account) =>
+          account.id === item.fundingAccountId &&
+          account.currency === 'VND',
+      );
+    if (!settlementAccount) return false;
+
     setProsperityItems((items) =>
-      items.map((item) =>
-        item.id === id
-          ? { ...item, status: 'harvested', harvestedAt: today }
-          : item,
+      items.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              harvestedAt: today,
+              settlementAccountId: settlementAccount.id,
+              status: 'harvested',
+            }
+          : candidate,
       ),
     );
+    setFinance((current) => {
+      const transactionId = `prosperity-${item.id}-settlement`;
+      const existing = current.transactions.find(
+        (transaction) =>
+          transaction.id === transactionId ||
+          (transaction.type === 'prosperity-settlement' &&
+            transaction.linkedProsperityId === item.id),
+      );
+      const transactions = current.transactions.filter(
+        (transaction) =>
+          transaction.id !== transactionId &&
+          !(
+            transaction.type === 'prosperity-settlement' &&
+            transaction.linkedProsperityId === item.id
+          ),
+      );
+      const now = new Date().toISOString();
+      return {
+        ...current,
+        transactions: [
+          {
+            accountId: settlementAccount.id,
+            amount: item.projectedTotal,
+            createdAt: existing?.createdAt ?? now,
+            date: today,
+            id: transactionId,
+            linkedProsperityId: item.id,
+            note: `Thu hoạch ${item.name}`,
+            type: 'prosperity-settlement',
+            ...(existing ? { updatedAt: now } : {}),
+          },
+          ...transactions,
+        ],
+      };
+    });
+    return true;
   }
 
   function handleDeleteProsperity(id: string) {
@@ -2204,6 +2277,7 @@ export default function Home() {
           <FinanceManager
             state={finance}
             onChange={setFinance}
+            prosperityValueVnd={prosperityCurrentValue}
             savingsValueVnd={currentPortfolio}
             walletValueVnd={cashBalance}
             exchangeSettings={exchangeSettings}

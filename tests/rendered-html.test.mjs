@@ -216,8 +216,8 @@ test("includes a versioned local backup and restore flow", async () => {
     ])
   ).join("\n");
 
-  assert.match(page, /const BACKUP_FORMAT_VERSION = 8/);
-  assert.match(page, /\[1, 2, 3, 4, 5, 6, 7, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 9/);
+  assert.match(page, /\[1, 2, 3, 4, 5, 6, 7, 8, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
   assert.match(page, /prosperity: ProsperityItem\[\]/);
   assert.match(page, /function parseBackupPayload\(/);
   assert.match(page, /cashLedger: CashLedgerEntry\[\]/);
@@ -272,6 +272,8 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Gửi tiết kiệm/);
   assert.match(manager, /Tất toán tiết kiệm/);
   assert.match(manager, /Đầu tư Phát lộc/);
+  assert.match(manager, /Thu hoạch Phát lộc/);
+  assert.match(manager, /Phát lộc đang ươm/);
   assert.match(manager, /Số tiền thực nhận/);
   assert.match(manager, /Tỷ giá thực tế/);
   assert.match(manager, /ĐƠN VỊ NHẬP/);
@@ -301,6 +303,7 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(finance, /transaction\.type === "savings-deposit"/);
   assert.match(finance, /transaction\.type === "savings-settlement"/);
   assert.match(finance, /transaction\.type === 'prosperity-deposit'/);
+  assert.match(finance, /transaction\.type === 'prosperity-settlement'/);
   assert.match(finance, /linkedProsperityId/);
   assert.match(finance, /currency: normalizeCurrency\(value\.currency, "VND"\)/);
   assert.match(finance, /const isEmptyLegacyDefault/);
@@ -350,7 +353,7 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
   assert.match(page, /item\.termType === "open-ended"/);
 });
 
-test("includes editable Phát lộc with an optional VND funding account", async () => {
+test("includes editable Phát lộc with complete VND funding and harvest flow", async () => {
   const source = (
     await Promise.all([
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
@@ -364,10 +367,13 @@ test("includes editable Phát lộc with an optional VND funding account", async
   assert.match(source, /function handleSaveProsperity/);
   assert.match(source, /function startEditing/);
   assert.match(source, /Tài khoản nguồn/);
+  assert.match(source, /Tài khoản nhận khi thu hoạch/);
   assert.match(source, /ngân hàng, ví điện tử hoặc tiền mặt/);
   assert.match(source, /Lưu thay đổi/);
   assert.match(source, /transaction\.linkedProsperityId !== id/);
   assert.match(source, /reconcileProsperityFundingTransactions/);
+  assert.match(source, /prosperityValueVnd/);
+  assert.match(source, /type: 'prosperity-settlement'/);
   assert.match(source, /projectedTax/);
   assert.match(source, /INTEREST_DEDUCTION_RATE/);
   assert.match(source, /Thuế lợi nhuận \(5%\)/);

@@ -64,6 +64,7 @@ type TransactionFilter = "all" | EditableFinanceTransactionType | "savings";
 type FinanceManagerProps = {
   state: FinanceState;
   onChange: Dispatch<SetStateAction<FinanceState>>;
+  prosperityValueVnd: number;
   savingsValueVnd: number;
   walletValueVnd: number;
   exchangeSettings: ExchangeRateSettings;
@@ -74,6 +75,7 @@ export default function FinanceManager({
   exchangeSettings,
   onChange,
   onExchangeSettingsChange,
+  prosperityValueVnd,
   savingsValueVnd,
   state,
   walletValueVnd,
@@ -142,8 +144,15 @@ export default function FinanceManager({
         savingsValueVnd,
         walletValueVnd,
         exchangeSettings,
+        prosperityValueVnd,
       ),
-    [exchangeSettings, savingsValueVnd, state, walletValueVnd],
+    [
+      exchangeSettings,
+      prosperityValueVnd,
+      savingsValueVnd,
+      state,
+      walletValueVnd,
+    ],
   );
   const latestActualRate = useMemo(() => {
     const accounts = new Map(state.accounts.map((account) => [account.id, account]));
@@ -242,7 +251,8 @@ export default function FinanceManager({
               (transactionFilter === "savings"
                 ? transaction.type === "savings-deposit" ||
                   transaction.type === "savings-settlement" ||
-                  transaction.type === 'prosperity-deposit'
+                  transaction.type === 'prosperity-deposit' ||
+                  transaction.type === 'prosperity-settlement'
                 : transaction.type === transactionFilter),
         )
         .sort(
@@ -310,7 +320,8 @@ export default function FinanceManager({
     if (
       transaction.type === "savings-deposit" ||
       transaction.type === "savings-settlement" ||
-      transaction.type === 'prosperity-deposit'
+      transaction.type === 'prosperity-deposit' ||
+      transaction.type === 'prosperity-settlement'
     ) {
       return;
     }
@@ -753,6 +764,9 @@ export default function FinanceManager({
     if (transaction.type === 'prosperity-deposit') {
       return { icon: '♧', name: 'Đầu tư Phát lộc', detail: transaction.note };
     }
+    if (transaction.type === 'prosperity-settlement') {
+      return { icon: '✓', name: 'Thu hoạch Phát lộc', detail: transaction.note };
+    }
     if (transaction.type === "savings-deposit") {
       return { icon: "↗", name: "Gửi tiết kiệm", detail: transaction.note };
     }
@@ -791,7 +805,10 @@ export default function FinanceManager({
     ) {
       return `−${formatMoney(transaction.amount, account.currency)}`;
     }
-    if (transaction.type === "savings-settlement") {
+    if (
+      transaction.type === "savings-settlement" ||
+      transaction.type === 'prosperity-settlement'
+    ) {
       return `+${formatMoney(transaction.amount, account.currency)}`;
     }
     if (transaction.type !== "transfer") {
@@ -927,6 +944,7 @@ export default function FinanceManager({
           <div className={styles.netWorthGrid}>
             <article><span>Tài khoản & tiền mặt</span><strong>{formatMoney(netWorth.liquidInBase, netWorth.baseCurrency)}</strong><small>{formatMoney(netWorth.accountKrw, "KRW")} · {formatMoney(netWorth.accountVnd, "VND")}</small></article>
             <article><span>Khoản tiết kiệm</span><strong>{formatMoney(netWorth.savingsInBase, netWorth.baseCurrency)}</strong><small>Giá trị hiện tại gồm lãi tích lũy</small></article>
+            <article><span>Phát lộc đang ươm</span><strong>{formatMoney(netWorth.prosperityInBase, netWorth.baseCurrency)}</strong><small>Gốc và lãi ròng tạm tính sau thuế</small></article>
             <article><span>Ví chờ tái đầu tư</span><strong>{formatMoney(netWorth.walletInBase, netWorth.baseCurrency)}</strong><small>Tiền dư đang khả dụng</small></article>
             <article className={styles.netWorthTotal}><span>Tài sản ròng</span><strong>{formatMoney(netWorth.totalInBase, netWorth.baseCurrency)}</strong><small>Theo tỷ giá đã lưu</small></article>
           </div>
@@ -1036,7 +1054,7 @@ export default function FinanceManager({
                   return <div key={transaction.id} className={styles.transactionRow}>
                     <span className={styles.roundIcon}>{meta.icon}</span>
                     <div><strong>{meta.name}</strong><small>{formatShortDate(transaction.date)}{meta.detail ? ` · ${meta.detail}` : ""}{transaction.updatedAt ? " · Đã sửa" : ""}</small></div>
-                    <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" || transaction.type === 'prosperity-deposit' ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
+                    <b className={transaction.type === "income" || transaction.type === "savings-settlement" || transaction.type === 'prosperity-settlement' ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" || transaction.type === 'prosperity-deposit' ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
                   </div>;
                 })}
               </div>
@@ -1169,8 +1187,8 @@ export default function FinanceManager({
                 return <div key={transaction.id} className={styles.transactionRow}>
                   <span className={styles.roundIcon}>{meta.icon}</span>
                   <div><strong>{meta.name}</strong><small>{formatShortDate(transaction.date)} · {transaction.note || account?.name}{transaction.updatedAt ? " · Đã sửa" : ""}</small></div>
-                  <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" || transaction.type === 'prosperity-deposit' ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
-                  {transaction.type === "savings-deposit" || transaction.type === "savings-settlement" || transaction.type === 'prosperity-deposit' ? (
+                  <b className={transaction.type === "income" || transaction.type === "savings-settlement" || transaction.type === 'prosperity-settlement' ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" || transaction.type === 'prosperity-deposit' ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
+                  {transaction.type === "savings-deposit" || transaction.type === "savings-settlement" || transaction.type === 'prosperity-deposit' || transaction.type === 'prosperity-settlement' ? (
                     <span className={styles.systemEntry}>Tự động</span>
                   ) : (
                     <div className={styles.rowActions}>

@@ -6,7 +6,8 @@ export type FinanceTransactionType =
   | "transfer"
   | "savings-deposit"
   | 'savings-settlement'
-  | 'prosperity-deposit';
+  | 'prosperity-deposit'
+  | 'prosperity-settlement';
 export type FinanceCurrency = "KRW" | "VND";
 
 export type FinanceAccount = {
@@ -80,8 +81,11 @@ export type FinanceSavingsFundingSource = {
 export type FinanceProsperityFundingSource = {
   amount: number;
   fundingAccountId?: string;
+  harvestedAt?: string;
   id: string;
   name: string;
+  projectedTotal?: number;
+  settlementAccountId?: string;
   startDate: string;
   status?: 'growing' | 'harvested';
 };
@@ -158,6 +162,7 @@ const TRANSACTION_TYPES = new Set<FinanceTransactionType>([
   "savings-deposit",
   'savings-settlement',
   'prosperity-deposit',
+  'prosperity-settlement',
 ]);
 const AMOUNT_INPUT_FORMATTER = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 0,
@@ -321,7 +326,10 @@ function normalizeTransaction(
     type === "savings-settlement"
   ) {
     if (!Number.isFinite(linkedSavingsId) || linkedSavingsId <= 0) return null;
-  } else if (type === 'prosperity-deposit') {
+  } else if (
+    type === 'prosperity-deposit' ||
+    type === 'prosperity-settlement'
+  ) {
     if (!linkedProsperityId) return null;
   } else if (!categoryId || !categoryIds.has(categoryId)) {
     return null;
@@ -339,7 +347,9 @@ function normalizeTransaction(
     ...(type === "savings-deposit" || type === "savings-settlement"
       ? { linkedSavingsId }
       : {}),
-    ...(type === 'prosperity-deposit' ? { linkedProsperityId } : {}),
+    ...(type === 'prosperity-deposit' || type === 'prosperity-settlement'
+      ? { linkedProsperityId }
+      : {}),
     note: cleanText(value.note, "", 240),
     createdAt:
       typeof value.createdAt === "string"
@@ -601,9 +611,17 @@ export function reconcileProsperityFundingTransactions(
       .filter((account) => account.currency === 'VND')
       .map((account) => account.id),
   );
-  const recordedProsperityIds = new Set(
+  const recordedFundingIds = new Set(
     state.transactions.flatMap((transaction) =>
       transaction.type === 'prosperity-deposit' &&
+      transaction.linkedProsperityId
+        ? [transaction.linkedProsperityId]
+        : [],
+    ),
+  );
+  const recordedSettlementIds = new Set(
+    state.transactions.flatMap((transaction) =>
+      transaction.type === 'prosperity-settlement' &&
       transaction.linkedProsperityId
         ? [transaction.linkedProsperityId]
         : [],
@@ -617,33 +635,65 @@ export function reconcileProsperityFundingTransactions(
   for (const item of prosperity) {
     const amount = Number(item.amount);
     const prosperityId = cleanText(item.id, '', 120);
-    const transactionId = `prosperity-${prosperityId}-funding`;
-    if (
-      !prosperityId ||
-      !Number.isFinite(amount) ||
-      amount <= 0 ||
-      !isValidDate(item.startDate) ||
-      !item.fundingAccountId ||
-      !vndAccountIds.has(item.fundingAccountId) ||
-      recordedProsperityIds.has(prosperityId) ||
-      transactionIds.has(transactionId)
-    ) {
-      continue;
-    }
+    if (!prosperityId) continue;
 
     const name = cleanText(item.name, 'Khoản Phát lộc', 120);
-    recoveredTransactions.push({
-      accountId: item.fundingAccountId,
-      amount,
-      createdAt: `${item.startDate}T00:00:00.000Z`,
-      date: item.startDate,
-      id: transactionId,
-      linkedProsperityId: prosperityId,
-      note: `Đầu tư ${name}`,
-      type: 'prosperity-deposit',
-    });
-    recordedProsperityIds.add(prosperityId);
-    transactionIds.add(transactionId);
+    const fundingTransactionId = `prosperity-${prosperityId}-funding`;
+    if (
+      Number.isFinite(amount) &&
+      amount > 0 &&
+      isValidDate(item.startDate) &&
+      item.fundingAccountId &&
+      vndAccountIds.has(item.fundingAccountId) &&
+      !recordedFundingIds.has(prosperityId) &&
+      !transactionIds.has(fundingTransactionId)
+    ) {
+      recoveredTransactions.push({
+        accountId: item.fundingAccountId,
+        amount,
+        createdAt: `${item.startDate}T00:00:00.000Z`,
+        date: item.startDate,
+        id: fundingTransactionId,
+        linkedProsperityId: prosperityId,
+        note: `Đầu tư ${name}`,
+        type: 'prosperity-deposit',
+      });
+      recordedFundingIds.add(prosperityId);
+      transactionIds.add(fundingTransactionId);
+    }
+
+    const settlementAmount = Number(item.projectedTotal);
+    const settlementAccountId =
+      item.settlementAccountId &&
+      vndAccountIds.has(item.settlementAccountId)
+        ? item.settlementAccountId
+        : item.fundingAccountId && vndAccountIds.has(item.fundingAccountId)
+          ? item.fundingAccountId
+          : '';
+    const settlementTransactionId =
+      `prosperity-${prosperityId}-settlement`;
+    if (
+      item.status === 'harvested' &&
+      Number.isFinite(settlementAmount) &&
+      settlementAmount > 0 &&
+      isValidDate(item.harvestedAt) &&
+      settlementAccountId &&
+      !recordedSettlementIds.has(prosperityId) &&
+      !transactionIds.has(settlementTransactionId)
+    ) {
+      recoveredTransactions.push({
+        accountId: settlementAccountId,
+        amount: settlementAmount,
+        createdAt: `${item.harvestedAt}T00:00:00.000Z`,
+        date: item.harvestedAt,
+        id: settlementTransactionId,
+        linkedProsperityId: prosperityId,
+        note: `Thu hoạch ${name}`,
+        type: 'prosperity-settlement',
+      });
+      recordedSettlementIds.add(prosperityId);
+      transactionIds.add(settlementTransactionId);
+    }
   }
 
   if (!recoveredTransactions.length) return state;
@@ -685,6 +735,12 @@ export function calculateAccountBalance(
       transaction.accountId === account.id
     ) {
       return balance - transaction.amount;
+    }
+    if (
+      transaction.type === 'prosperity-settlement' &&
+      transaction.accountId === account.id
+    ) {
+      return balance + transaction.amount;
     }
     if (
       transaction.type === "savings-settlement" &&

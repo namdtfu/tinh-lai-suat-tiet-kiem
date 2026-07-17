@@ -28,7 +28,7 @@ import {
   toLocalIso,
 } from "./savings.ts";
 export const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
-export const BACKUP_FORMAT_VERSION = 8;
+export const BACKUP_FORMAT_VERSION = 9;
 export const MAX_BACKUP_SIZE = 5_000_000;
 export const SAFETY_SNAPSHOT_LIMIT = 7;
 const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
@@ -82,7 +82,7 @@ export type CloudAppState = {
   exchange: ExchangeRateSettings;
   financialGoals: FinancialGoal[];
   versionHistory: AppVersion[];
-  schemaVersion: 6;
+  schemaVersion: 7;
 };
 
 export type AppStateCore = {
@@ -459,7 +459,7 @@ export function parseBackupPayload(value: unknown): BackupPayload | null {
   if (
     !isRecord(value) ||
     value.app !== BACKUP_APP_ID ||
-    ![1, 2, 3, 4, 5, 6, 7, BACKUP_FORMAT_VERSION].includes(version) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, BACKUP_FORMAT_VERSION].includes(version) ||
     typeof value.exportedAt !== "string" ||
     !Array.isArray(value.savings) ||
     !Array.isArray(value.interestRates) ||
@@ -498,7 +498,7 @@ export function parseCloudAppState(value: unknown): CloudAppState | null {
   const schemaVersion = isRecord(value) ? Number(value.schemaVersion) : 0;
   if (
     !isRecord(value) ||
-    ![1, 2, 3, 4, 5, 6].includes(schemaVersion)
+    ![1, 2, 3, 4, 5, 6, 7].includes(schemaVersion)
   ) {
     return null;
   }
@@ -520,7 +520,7 @@ export function parseCloudAppState(value: unknown): CloudAppState | null {
   if (!backup) return null;
 
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     savings: backup.savings,
     prosperity: backup.prosperity,
     interestRates: backup.interestRates,
@@ -538,7 +538,7 @@ export function createCloudAppState(
   versionHistory: AppVersion[],
 ): CloudAppState {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     ...core,
     versionHistory,
   };

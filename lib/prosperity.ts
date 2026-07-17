@@ -16,6 +16,7 @@ export type ProsperityItem = {
   amount: number;
   annualInterestRate: number;
   fundingAccountId?: string;
+  settlementAccountId?: string;
   termDays: number;
   termWeeks: number;
   startDate: string;
@@ -150,6 +151,10 @@ export function normalizeProsperityItem(
     typeof item.fundingAccountId === 'string'
       ? item.fundingAccountId.trim()
       : '';
+  const settlementAccountId =
+    typeof item.settlementAccountId === 'string'
+      ? item.settlementAccountId.trim()
+      : '';
   const termWeeks = Number(item.termWeeks);
   const termDays = item.termDays === undefined ? 0 : Number(item.termDays);
   const status: ProsperityStatus =
@@ -184,6 +189,9 @@ export function normalizeProsperityItem(
     annualInterestRate,
     ...(fundingAccountId
       ? { fundingAccountId: fundingAccountId.slice(0, 100) }
+      : {}),
+    ...(settlementAccountId
+      ? { settlementAccountId: settlementAccountId.slice(0, 100) }
       : {}),
     termDays,
     termWeeks,
