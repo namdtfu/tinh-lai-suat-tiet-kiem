@@ -272,7 +272,7 @@ button {
 
 .workspace-switcher {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 8px 38px;
   background: #332451;
@@ -2328,6 +2328,22 @@ footer {
   font-size: 0.72rem;
 }
 
+.backup-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.backup-summary span {
+  padding: 5px 8px;
+  color: #5c477c;
+  background: #eee8f7;
+  border-radius: 999px;
+  font-size: .66rem;
+  font-weight: 800;
+}
+
 .action-center {
   padding: 28px 52px;
   background: linear-gradient(135deg, #fbf9ff, #f5fbf8);
@@ -2690,6 +2706,56 @@ footer {
   border-radius: 16px;
 }
 
+.safety-card {
+  margin-top: 16px;
+  padding: 22px;
+  background: linear-gradient(135deg, #f0fbf6, #fbfdfc);
+  border: 1px solid #cde9db;
+  border-radius: 16px;
+}
+
+.safety-icon {
+  background: linear-gradient(135deg, #1d9b69, #08724b);
+  box-shadow: 0 10px 20px rgba(18, 126, 83, .18);
+}
+
+.safety-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid #d5e9df;
+}
+
+.safety-list > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 10px;
+  background: rgba(255, 255, 255, .82);
+  border: 1px solid #dcece4;
+  border-radius: 9px;
+}
+
+.safety-list > div > span { color: #168459; font-size: .62rem; }
+.safety-list > div > div:not(.safety-actions) { display: grid; gap: 2px; }
+.safety-list strong { font-size: .78rem; }
+.safety-list small,
+.safety-empty { color: var(--muted); font-size: .68rem; }
+.safety-actions { display: flex; gap: 6px; }
+.safety-actions button {
+  padding: 6px 8px;
+  color: #126a49;
+  background: #fff;
+  border: 1px solid #c9e2d6;
+  border-radius: 7px;
+  font-size: .68rem;
+  font-weight: 750;
+}
+.safety-actions button:last-child { color: #fff; background: #168459; border-color: #168459; }
+.safety-empty { margin-top: 16px; padding: 13px; background: rgba(255, 255, 255, .7); border-radius: 9px; }
+
 .version-heading,
 .version-heading > div {
   display: flex;
@@ -2784,6 +2850,14 @@ footer {
   .version-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .safety-list > div {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .safety-actions {
+    grid-column: 2;
   }
 
   .version-heading > button {

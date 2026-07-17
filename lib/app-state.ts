@@ -1,22 +1,23 @@
 import {
   normalizeProsperityItem,
   type ProsperityItem,
-} from './prosperity';
+} from './prosperity.ts';
 
 import {
   createDefaultFinanceState,
   type FinanceState,
+  hasMeaningfulFinanceData,
   normalizeFinanceState,
   reconcileProsperityFundingTransactions,
   reconcileSavingsFundingTransactions,
-} from "./finance";
+} from "./finance.ts";
 import {
   DEFAULT_EXCHANGE_SETTINGS,
   type ExchangeRateSettings,
   type FinancialGoal,
   normalizeExchangeSettings,
   normalizeFinancialGoals,
-} from "./planning";
+} from "./planning.ts";
 import {
   calculateSavings,
   type MaturityInstruction,
@@ -25,12 +26,14 @@ import {
   type SavingsItem,
   type SavingsStatus,
   toLocalIso,
-} from "./savings";
+} from "./savings.ts";
 export const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
 export const BACKUP_FORMAT_VERSION = 7;
 export const MAX_BACKUP_SIZE = 5_000_000;
+export const SAFETY_SNAPSHOT_LIMIT = 7;
+const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
 
-export type AppWorkspace = "savings" | "finance" | "goals";
+export type AppWorkspace = "savings" | "finance" | "goals" | "backup";
 
 export type GoalSettings = {
   interestRate: string;
@@ -94,6 +97,13 @@ export type AppStateCore = {
 };
 
 export type AppVersion = {
+  id: string;
+  createdAt: string;
+  label: string;
+  data: AppStateCore;
+};
+
+export type SafetySnapshot = {
   id: string;
   createdAt: string;
   label: string;
@@ -329,6 +339,79 @@ function normalizeAppStateCore(value: unknown): AppStateCore | null {
   };
 }
 
+export function hasMeaningfulAppState(core: AppStateCore) {
+  const hasCustomInterestRates =
+    JSON.stringify([...core.interestRates].sort((left, right) => left - right)) !==
+    JSON.stringify([...DEFAULT_INTEREST_RATES].sort((left, right) => left - right));
+  return Boolean(
+    core.savings.length ||
+      core.prosperity.length ||
+      core.cashLedger.length ||
+      core.financialGoals.length ||
+      hasCustomInterestRates ||
+      hasMeaningfulFinanceData(core.finance) ||
+      core.goal.monthlyInterest ||
+      core.goal.interestRate ||
+      core.goal.monthlyContribution ||
+      JSON.stringify(core.exchange) !== JSON.stringify(DEFAULT_EXCHANGE_SETTINGS)
+  );
+}
+
+export function createSafetySnapshot(
+  data: AppStateCore,
+  label: string,
+  createdAt = new Date().toISOString(),
+): SafetySnapshot {
+  return {
+    id: `safety-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    createdAt,
+    label: label.slice(0, 120),
+    data,
+  };
+}
+
+export function normalizeSafetySnapshots(value: unknown): SafetySnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-SAFETY_SNAPSHOT_LIMIT).flatMap((candidate) => {
+    if (!isRecord(candidate)) return [];
+    const data = normalizeAppStateCore(candidate.data);
+    const id = typeof candidate.id === "string" ? candidate.id.slice(0, 120) : "";
+    const createdAt =
+      typeof candidate.createdAt === "string"
+        ? candidate.createdAt.slice(0, 40)
+        : "";
+    if (!data || !id || !createdAt || Number.isNaN(Date.parse(createdAt))) {
+      return [];
+    }
+    return [{
+      id,
+      createdAt,
+      label:
+        typeof candidate.label === "string"
+          ? candidate.label.slice(0, 120)
+          : "Bản sao an toàn",
+      data,
+    }];
+  });
+}
+
+export function appendSafetySnapshot(
+  snapshots: SafetySnapshot[],
+  snapshot: SafetySnapshot,
+) {
+  const normalized = normalizeSafetySnapshots(snapshots);
+  const normalizedSnapshot = normalizeSafetySnapshots([snapshot])[0];
+  if (!normalizedSnapshot) return normalized;
+  const latest = normalized.at(-1);
+  if (
+    latest &&
+    JSON.stringify(latest.data) === JSON.stringify(normalizedSnapshot.data)
+  ) {
+    return normalized;
+  }
+  return [...normalized, normalizedSnapshot].slice(-SAFETY_SNAPSHOT_LIMIT);
+}
+
 export function normalizeVersionHistory(value: unknown): AppVersion[] {
   if (!Array.isArray(value)) return [];
   return value.slice(-20).flatMap((candidate) => {
@@ -454,6 +537,20 @@ export function createCloudAppState(
 ): CloudAppState {
   return {
     schemaVersion: 6,
+    ...core,
+    versionHistory,
+  };
+}
+
+export function createBackupPayload(
+  core: AppStateCore,
+  versionHistory: AppVersion[],
+  exportedAt = new Date().toISOString(),
+): BackupPayload {
+  return {
+    app: BACKUP_APP_ID,
+    version: BACKUP_FORMAT_VERSION,
+    exportedAt,
     ...core,
     versionHistory,
   };

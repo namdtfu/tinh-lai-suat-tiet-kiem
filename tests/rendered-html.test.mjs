@@ -227,6 +227,14 @@ test("includes a versioned local backup and restore flow", async () => {
   assert.match(page, /URL\.createObjectURL\(blob\)/);
   assert.match(page, /accept="application\/json,\.json"/);
   assert.match(page, /Khôi phục từ tệp/);
+  assert.match(page, /Sao lưu toàn bộ MoneyMind/);
+  assert.match(page, /Tải bản sao lưu toàn bộ/);
+  assert.match(page, /Bản sao an toàn trên thiết bị/);
+  assert.match(page, /moneymindSafetySnapshots/);
+  assert.match(page, /createSafetySnapshot/);
+  assert.match(page, /hasMeaningfulAppState/);
+  assert.doesNotMatch(page, /localStorage\.removeItem\(SAVINGS_KEY\)/);
+  assert.doesNotMatch(page, /localStorage\.removeItem\(FINANCE_KEY\)/);
   assert.match(page, /Toàn bộ dữ liệu hiện có trên thiết bị này sẽ bị thay thế/);
 });
 

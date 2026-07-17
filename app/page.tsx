@@ -37,24 +37,27 @@ import {
   subscribeToCloudState,
 } from "@/lib/supabase-realtime";
 import {
-  BACKUP_APP_ID,
-  BACKUP_FORMAT_VERSION,
   MAX_BACKUP_SIZE,
   type AppStateCore,
   type AppVersion,
   type AppWorkspace,
   type AuthStatus,
-  type BackupPayload,
   type BackupStatus,
   type CashLedgerEntry,
   type CloudAppState,
   type CloudConflict,
   type CloudSyncStatus,
+  type SafetySnapshot,
+  appendSafetySnapshot,
+  createBackupPayload,
   createCloudAppState,
+  createSafetySnapshot,
   getCoreFromCloudState,
+  hasMeaningfulAppState,
   isRecord,
   normalizeCashLedgerEntry,
   normalizeGoalSettings,
+  normalizeSafetySnapshots,
   normalizeVersionHistory,
   parseBackupPayload,
   parseCloudAppState,
@@ -77,7 +80,6 @@ import {
   createDefaultFinanceState,
   FinanceState,
   getCategorySpent,
-  hasMeaningfulFinanceData,
   normalizeFinanceState,
   reconcileProsperityFundingTransactions,
   reconcileSavingsFundingTransactions,
@@ -122,6 +124,7 @@ const FINANCIAL_GOALS_KEY = "financialGoals";
 const VERSION_HISTORY_KEY = "versionHistory";
 const WORKSPACE_KEY = "activeWorkspace";
 const PROSPERITY_KEY = 'prosperityItems';
+const SAFETY_SNAPSHOTS_KEY = 'moneymindSafetySnapshots';
 
 function createSavingsFinanceTransaction({
   accountId,
@@ -176,6 +179,32 @@ function readStoredRecord<T>(key: string): T | null {
   }
 }
 
+function persistSafetySnapshots(snapshots: SafetySnapshot[]) {
+  try {
+    localStorage.setItem(SAFETY_SNAPSHOTS_KEY, JSON.stringify(snapshots));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function downloadBackupPayload(
+  payload: ReturnType<typeof createBackupPayload>,
+  filename: string,
+) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+}
+
 export default function Home() {
   const [savings, setSavings] = useState<SavingsItem[]>([]);
   const [prosperityItems, setProsperityItems] = useState<ProsperityItem[]>([]);
@@ -188,6 +217,7 @@ export default function Home() {
     useState<ExchangeRateSettings>({ ...DEFAULT_EXCHANGE_SETTINGS });
   const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
   const [versionHistory, setVersionHistory] = useState<AppVersion[]>([]);
+  const [safetySnapshots, setSafetySnapshots] = useState<SafetySnapshot[]>([]);
   const [activeWorkspace, setActiveWorkspace] =
     useState<AppWorkspace>("savings");
   const [activeSavingsProduct, setActiveSavingsProduct] =
@@ -269,6 +299,14 @@ export default function Home() {
       savings,
     ],
   );
+  const currentCoreRef = useRef(currentCore);
+
+  function captureSafetySnapshot(label: string, data = currentCoreRef.current) {
+    if (!hasMeaningfulAppState(data)) return;
+    setSafetySnapshots((current) =>
+      appendSafetySnapshot(current, createSafetySnapshot(data, label)),
+    );
+  }
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- localStorage is client-only, so persisted data must be hydrated after mount. */
@@ -288,6 +326,9 @@ export default function Home() {
     );
     const storedVersionHistory = readStoredArray<AppVersion>(
       VERSION_HISTORY_KEY,
+    );
+    const storedSafetySnapshots = readStoredArray<unknown>(
+      SAFETY_SNAPSHOTS_KEY,
     );
     const storedWorkspace = localStorage.getItem(WORKSPACE_KEY);
     const localSavings = storedSavings
@@ -328,6 +369,24 @@ export default function Home() {
     const localExchange = normalizeExchangeSettings(storedExchange);
     const localFinancialGoals = normalizeFinancialGoals(storedFinancialGoals);
     const localVersionHistory = normalizeVersionHistory(storedVersionHistory);
+    const localCore: AppStateCore = {
+      savings: localSavings,
+      prosperity: localProsperity,
+      interestRates: localRates,
+      cashLedger: localCashLedger,
+      finance: localFinance,
+      goal: localGoal,
+      exchange: localExchange,
+      financialGoals: localFinancialGoals,
+    };
+    let localSafetySnapshots = normalizeSafetySnapshots(storedSafetySnapshots);
+    if (hasMeaningfulAppState(localCore)) {
+      localSafetySnapshots = appendSafetySnapshot(
+        localSafetySnapshots,
+        createSafetySnapshot(localCore, 'Trước khi đồng bộ khi mở ứng dụng'),
+      );
+      persistSafetySnapshots(localSafetySnapshots);
+    }
 
     setSavings(localSavings);
     setProsperityItems(localProsperity);
@@ -337,8 +396,11 @@ export default function Home() {
     setExchangeSettings(localExchange);
     setFinancialGoals(localFinancialGoals);
     setVersionHistory(localVersionHistory);
+    setSafetySnapshots(localSafetySnapshots);
     setActiveWorkspace(
-      storedWorkspace === "finance" || storedWorkspace === "goals"
+      storedWorkspace === "finance" ||
+        storedWorkspace === "goals" ||
+        storedWorkspace === "backup"
         ? storedWorkspace
         : "savings",
     );
@@ -373,21 +435,36 @@ export default function Home() {
           if (!remoteState) {
             throw new Error("Dữ liệu trên tài khoản không đúng định dạng.");
           }
-          setSavings(remoteState.savings);
-          setProsperityItems(remoteState.prosperity);
-          setInterestRates(remoteState.interestRates);
-          setCashLedger(remoteState.cashLedger);
-          setFinance(remoteState.finance);
-          setExchangeSettings(remoteState.exchange);
-          setFinancialGoals(remoteState.financialGoals);
-          setVersionHistory(remoteState.versionHistory);
-          setGoalMonthlyInterest(remoteState.goal.monthlyInterest);
-          setGoalInterestRate(remoteState.goal.interestRate);
-          setGoalMonthlyContribution(remoteState.goal.monthlyContribution);
+          const remoteCore = getCoreFromCloudState(remoteState);
           lastCloudUpdatedAtRef.current = remoteRow.updated_at;
-          skipNextCloudWriteRef.current = true;
           setCloudReady(true);
-          setCloudSyncStatus("saved");
+          if (
+            hasMeaningfulAppState(localCore) &&
+            !hasMeaningfulAppState(remoteCore)
+          ) {
+            setCloudConflict({
+              remoteState,
+              updatedAt: remoteRow.updated_at,
+            });
+            setCloudError(
+              'Bản đám mây đang trống nên ứng dụng chưa ghi đè dữ liệu trên thiết bị.',
+            );
+            setCloudSyncStatus('error');
+          } else {
+            setSavings(remoteState.savings);
+            setProsperityItems(remoteState.prosperity);
+            setInterestRates(remoteState.interestRates);
+            setCashLedger(remoteState.cashLedger);
+            setFinance(remoteState.finance);
+            setExchangeSettings(remoteState.exchange);
+            setFinancialGoals(remoteState.financialGoals);
+            setVersionHistory(remoteState.versionHistory);
+            setGoalMonthlyInterest(remoteState.goal.monthlyInterest);
+            setGoalInterestRate(remoteState.goal.interestRate);
+            setGoalMonthlyContribution(remoteState.goal.monthlyContribution);
+            skipNextCloudWriteRef.current = true;
+            setCloudSyncStatus("saved");
+          }
         } else {
           const hasCustomRates =
             JSON.stringify([...localRates].sort((a, b) => a - b)) !==
@@ -395,18 +472,9 @@ export default function Home() {
               [...DEFAULT_INTEREST_RATES].sort((a, b) => a - b),
             );
           const hasLocalData = Boolean(
-            localSavings.length ||
-              localProsperity.length ||
-              localCashLedger.length ||
+            hasMeaningfulAppState(localCore) ||
               hasCustomRates ||
-              localGoal.monthlyInterest ||
-              localGoal.interestRate ||
-              localGoal.monthlyContribution ||
-              hasMeaningfulFinanceData(localFinance) ||
-              localFinancialGoals.length ||
-              localVersionHistory.length ||
-              JSON.stringify(localExchange) !==
-                JSON.stringify(DEFAULT_EXCHANGE_SETTINGS)
+              localVersionHistory.length
           );
           setMigrationPending(hasLocalData);
           setCloudReady(!hasLocalData);
@@ -436,61 +504,38 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return;
-    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
-      localStorage.removeItem(SAVINGS_KEY);
-    } else if (authStatus === "local" || migrationPending) {
-      localStorage.setItem(SAVINGS_KEY, JSON.stringify(savings));
-    }
-  }, [authStatus, cloudReady, migrationPending, ready, savings]);
+    localStorage.setItem(SAVINGS_KEY, JSON.stringify(savings));
+  }, [ready, savings]);
 
   useEffect(() => {
     if (!ready) return;
-    if (authStatus === 'signed-in' && cloudReady && !migrationPending) {
-      localStorage.removeItem(PROSPERITY_KEY);
-    } else if (authStatus === 'local' || migrationPending) {
-      localStorage.setItem(PROSPERITY_KEY, JSON.stringify(prosperityItems));
-    }
-  }, [authStatus, cloudReady, migrationPending, prosperityItems, ready]);
+    localStorage.setItem(PROSPERITY_KEY, JSON.stringify(prosperityItems));
+  }, [prosperityItems, ready]);
 
   useEffect(() => {
     if (!ready) return;
-    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
-      localStorage.removeItem(RATES_KEY);
-    } else if (authStatus === "local" || migrationPending) {
-      localStorage.setItem(RATES_KEY, JSON.stringify(interestRates));
-    }
-  }, [authStatus, cloudReady, interestRates, migrationPending, ready]);
+    localStorage.setItem(RATES_KEY, JSON.stringify(interestRates));
+  }, [interestRates, ready]);
 
   useEffect(() => {
     if (!ready) return;
-    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
-      localStorage.removeItem(CASH_LEDGER_KEY);
-    } else if (authStatus === "local" || migrationPending) {
-      localStorage.setItem(CASH_LEDGER_KEY, JSON.stringify(cashLedger));
-    }
-  }, [authStatus, cashLedger, cloudReady, migrationPending, ready]);
+    localStorage.setItem(CASH_LEDGER_KEY, JSON.stringify(cashLedger));
+  }, [cashLedger, ready]);
 
   useEffect(() => {
     if (!ready) return;
-    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
-      localStorage.removeItem(GOAL_SETTINGS_KEY);
-    } else if (authStatus === "local" || migrationPending) {
-      localStorage.setItem(
-        GOAL_SETTINGS_KEY,
-        JSON.stringify({
-          monthlyInterest: goalMonthlyInterest,
-          interestRate: goalInterestRate,
-          monthlyContribution: goalMonthlyContribution,
-        }),
-      );
-    }
+    localStorage.setItem(
+      GOAL_SETTINGS_KEY,
+      JSON.stringify({
+        monthlyInterest: goalMonthlyInterest,
+        interestRate: goalInterestRate,
+        monthlyContribution: goalMonthlyContribution,
+      }),
+    );
   }, [
-    authStatus,
-    cloudReady,
     goalInterestRate,
     goalMonthlyContribution,
     goalMonthlyInterest,
-    migrationPending,
     ready,
   ]);
 
@@ -501,33 +546,44 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return;
-    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
-      localStorage.removeItem(FINANCE_KEY);
-    } else if (authStatus === "local" || migrationPending) {
-      localStorage.setItem(FINANCE_KEY, JSON.stringify(finance));
-    }
-  }, [authStatus, cloudReady, finance, migrationPending, ready]);
+    localStorage.setItem(FINANCE_KEY, JSON.stringify(finance));
+  }, [finance, ready]);
 
   useEffect(() => {
     if (!ready) return;
-    if (authStatus === "signed-in" && cloudReady && !migrationPending) {
-      localStorage.removeItem(EXCHANGE_SETTINGS_KEY);
-      localStorage.removeItem(FINANCIAL_GOALS_KEY);
-      localStorage.removeItem(VERSION_HISTORY_KEY);
-    } else if (authStatus === "local" || migrationPending) {
-      localStorage.setItem(EXCHANGE_SETTINGS_KEY, JSON.stringify(exchangeSettings));
-      localStorage.setItem(FINANCIAL_GOALS_KEY, JSON.stringify(financialGoals));
-      localStorage.setItem(VERSION_HISTORY_KEY, JSON.stringify(versionHistory));
-    }
+    localStorage.setItem(EXCHANGE_SETTINGS_KEY, JSON.stringify(exchangeSettings));
+    localStorage.setItem(FINANCIAL_GOALS_KEY, JSON.stringify(financialGoals));
+    localStorage.setItem(VERSION_HISTORY_KEY, JSON.stringify(versionHistory));
   }, [
-    authStatus,
-    cloudReady,
     exchangeSettings,
     financialGoals,
-    migrationPending,
     ready,
     versionHistory,
   ]);
+
+  useEffect(() => {
+    if (!ready) return;
+    persistSafetySnapshots(safetySnapshots);
+  }, [ready, safetySnapshots]);
+
+  useEffect(() => {
+    currentCoreRef.current = currentCore;
+  }, [currentCore]);
+
+  useEffect(() => {
+    if (!ready || !hasMeaningfulAppState(currentCore)) return;
+    const latest = safetySnapshots.at(-1);
+    if (latest?.createdAt.slice(0, 10) === getTodayIso()) return;
+    const timeout = window.setTimeout(() => {
+      setSafetySnapshots((current) =>
+        appendSafetySnapshot(
+          current,
+          createSafetySnapshot(currentCore, 'Bản sao tự động hằng ngày'),
+        ),
+      );
+    }, 1_500);
+    return () => window.clearTimeout(timeout);
+  }, [currentCore, ready, safetySnapshots]);
 
   useEffect(() => {
     if (!ready) return;
@@ -639,6 +695,31 @@ export default function Home() {
         lastCloudUpdatedAtRef.current = remoteRow.updated_at;
         skipNextCloudWriteRef.current = true;
         const remoteCore = getCoreFromCloudState(remoteState);
+        if (hasMeaningfulAppState(currentCoreRef.current)) {
+          setSafetySnapshots((current) =>
+            appendSafetySnapshot(
+              current,
+              createSafetySnapshot(
+                currentCoreRef.current,
+                'Trước khi nhận thay đổi từ thiết bị khác',
+              ),
+            ),
+          );
+        }
+        if (
+          hasMeaningfulAppState(currentCoreRef.current) &&
+          !hasMeaningfulAppState(remoteCore)
+        ) {
+          setCloudConflict({
+            remoteState,
+            updatedAt: remoteRow.updated_at,
+          });
+          setCloudError(
+            'Một thiết bị khác gửi bản dữ liệu trống. MoneyMind đã giữ nguyên dữ liệu trên thiết bị này để bạn lựa chọn.',
+          );
+          setCloudSyncStatus('error');
+          return;
+        }
         lastCoreSignatureRef.current = JSON.stringify(remoteCore);
         setSavings(remoteCore.savings);
         setProsperityItems(remoteCore.prosperity);
@@ -1425,6 +1506,7 @@ export default function Home() {
     const versionIndex = versionHistory.findIndex((item) => item.id === version.id);
     if (versionIndex < 0) return;
     if (!window.confirm(`Khôi phục “${version.label}”? Trạng thái hiện tại sẽ được thay bằng phiên bản đã chọn.`)) return;
+    captureSafetySnapshot('Trước khi khôi phục lịch sử phiên bản');
     applyCoreState(version.data);
     setVersionHistory((current) => current.slice(0, versionIndex + 1));
     setBackupStatus({
@@ -1439,27 +1521,64 @@ export default function Home() {
   }
 
   function handleExportBackup() {
-    const payload: BackupPayload = {
-      app: BACKUP_APP_ID,
-      version: BACKUP_FORMAT_VERSION,
-      exportedAt: new Date().toISOString(),
-      ...currentCore,
-      versionHistory,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = `moneymind-backup-${getTodayIso()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+    const payload = createBackupPayload(currentCore, versionHistory);
+    downloadBackupPayload(
+      payload,
+      `moneymind-full-backup-${getTodayIso()}.json`,
+    );
+    captureSafetySnapshot('Sao lưu toàn bộ thủ công');
     setBackupStatus({
       kind: "success",
-      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản Tích lũy, ${prosperityItems.length} khoản Phát lộc, ${cashLedger.length} giao dịch ví và ${finance.transactions.length} giao dịch thu chi.`,
+      text: `Đã tải bản sao toàn bộ gồm ${savings.length} khoản Tích lũy, ${prosperityItems.length} khoản Phát lộc, ${finance.accounts.length} tài khoản, ${finance.transactions.length} giao dịch thu chi và ${financialGoals.length} mục tiêu.`,
+    });
+  }
+
+  function handleCreateSafetySnapshot() {
+    if (!hasMeaningfulAppState(currentCore)) {
+      setBackupStatus({
+        kind: 'error',
+        text: 'Chưa có dữ liệu để tạo bản sao an toàn.',
+      });
+      return;
+    }
+    captureSafetySnapshot('Bản sao thủ công trên thiết bị', currentCore);
+    setBackupStatus({
+      kind: 'success',
+      text: 'Đã tạo bản sao an toàn trên thiết bị. Bản này không bị đồng bộ đám mây xóa.',
+    });
+  }
+
+  function handleDownloadSafetySnapshot(id: string) {
+    const snapshot = safetySnapshots.find((item) => item.id === id);
+    if (!snapshot) return;
+    downloadBackupPayload(
+      createBackupPayload(snapshot.data, [], snapshot.createdAt),
+      `moneymind-safety-${snapshot.createdAt.slice(0, 10)}.json`,
+    );
+    setBackupStatus({
+      kind: 'success',
+      text: `Đã tải bản sao an toàn lúc ${new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(snapshot.createdAt))}.`,
+    });
+  }
+
+  function handleRestoreSafetySnapshot(id: string) {
+    const snapshot = safetySnapshots.find((item) => item.id === id);
+    if (!snapshot) return;
+    if (
+      !window.confirm(
+        `Khôi phục bản sao “${snapshot.label}”? Dữ liệu hiện tại sẽ được giữ lại thành một bản sao an toàn khác trước khi khôi phục.`,
+      )
+    ) {
+      return;
+    }
+    captureSafetySnapshot('Trước khi khôi phục bản sao an toàn');
+    applyCoreState(snapshot.data);
+    setCollapsedRates(new Set());
+    setExpandedHistoryId(null);
+    resetForm();
+    setBackupStatus({
+      kind: 'success',
+      text: `Đã khôi phục bản sao an toàn lúc ${new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(snapshot.createdAt))}.`,
     });
   }
 
@@ -1485,6 +1604,7 @@ export default function Home() {
       );
       if (!shouldRestore) return;
 
+      captureSafetySnapshot('Trước khi khôi phục từ tệp');
       applyCoreState(payload);
       setVersionHistory(payload.versionHistory);
       setCollapsedRates(new Set());
@@ -1588,6 +1708,7 @@ export default function Home() {
 
   function handleUseRemoteConflict() {
     if (!cloudConflict) return;
+    captureSafetySnapshot('Trước khi dùng bản đám mây');
     const remoteCore = getCoreFromCloudState(cloudConflict.remoteState);
     applyCoreState(remoteCore);
     setVersionHistory(cloudConflict.remoteState.versionHistory);
@@ -1643,6 +1764,7 @@ export default function Home() {
     if (!cloudSession) return;
     setCloudActionBusy(true);
     setCloudError("");
+    captureSafetySnapshot('Trước khi chuyển dữ liệu lên đám mây');
     try {
       const activeSession = await ensureCloudSession(cloudSession);
       const state = createCloudAppState(currentCore, versionHistory);
@@ -1677,6 +1799,7 @@ export default function Home() {
 
     setCloudActionBusy(true);
     setCloudError("");
+    captureSafetySnapshot('Trước khi bắt đầu tài khoản trống');
     try {
       const activeSession = await ensureCloudSession(cloudSession);
       const emptyCore: AppStateCore = {
@@ -1891,6 +2014,8 @@ export default function Home() {
               ? "QUẢN LÝ TÀI CHÍNH CÁ NHÂN"
               : activeWorkspace === "goals"
                 ? "MỤC TIÊU TÀI CHÍNH"
+                : activeWorkspace === "backup"
+                  ? "AN TOÀN DỮ LIỆU"
                 : "SỔ TIẾT KIỆM CÁ NHÂN"}
           </span>
           <h1>
@@ -1898,6 +2023,8 @@ export default function Home() {
               ? "Thu chi rõ ràng, quyết định nhẹ đầu"
               : activeWorkspace === "goals"
                 ? "Mỗi mục tiêu đều có một đường đi"
+                : activeWorkspace === "backup"
+                  ? "Sao lưu tất cả, khôi phục chủ động"
                 : "Tính lãi suất tiết kiệm"}
           </h1>
           <p>
@@ -1905,6 +2032,8 @@ export default function Home() {
               ? "Theo dõi tiền vào, tiền ra, ngân sách và số dư từng tài khoản trong cùng một nơi."
               : activeWorkspace === "goals"
                 ? "Gắn tài khoản và khoản tiết kiệm vào quỹ khẩn cấp, mua nhà, du lịch, học phí hoặc kế hoạch riêng của bạn."
+                : activeWorkspace === "backup"
+                  ? "Tải toàn bộ dữ liệu về máy và giữ các bản sao an toàn độc lập với đồng bộ đám mây."
                 : "Theo dõi từng khoản gửi, lãi sau khấu trừ và số tiền dự kiến khi đáo hạn — tất cả trong một nơi."}
           </p>
         </div>
@@ -1972,6 +2101,15 @@ export default function Home() {
           <span aria-hidden="true">◎</span>
           Mục tiêu
         </button>
+        <button
+          type="button"
+          aria-current={activeWorkspace === "backup" ? "page" : undefined}
+          className={activeWorkspace === "backup" ? "active" : ""}
+          onClick={() => setActiveWorkspace("backup")}
+        >
+          <span aria-hidden="true">◆</span>
+          Sao lưu
+        </button>
       </nav>
       {passwordModalOpen && (
         <div className="security-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setPasswordModalOpen(false); }}>
@@ -2002,6 +2140,48 @@ export default function Home() {
       </div>
     </div>
   );
+
+  const fullBackupPanel = (
+    <BackupPanel
+      backupStatus={backupStatus}
+      backupSummary={{
+        accounts: finance.accounts.length,
+        budgets: finance.budgets.length,
+        cashLedger: cashLedger.length,
+        financialGoals: financialGoals.length,
+        prosperity: prosperityItems.length,
+        savings: savings.length,
+        transactions: finance.transactions.length,
+        versions: versionHistory.length,
+      }}
+      onCreateSafetySnapshot={handleCreateSafetySnapshot}
+      onDismissStatus={() => setBackupStatus(null)}
+      onDownloadSafetySnapshot={handleDownloadSafetySnapshot}
+      onExport={handleExportBackup}
+      onImport={handleImportBackup}
+      onRestoreSafetySnapshot={handleRestoreSafetySnapshot}
+      onRestoreVersion={restoreVersion}
+      onUndoLatest={handleUndoLatest}
+      ready={ready}
+      safetySnapshots={safetySnapshots}
+      versionHistory={versionHistory}
+    />
+  );
+
+  if (activeWorkspace === "backup") {
+    return (
+      <main className="page-shell">
+        <div className="app-container">
+          {appHeader}
+          {cloudBanner}
+          {fullBackupPanel}
+          <footer>
+            <p>MoneyMind · Bản sao tải xuống là lớp bảo vệ an toàn nhất khi đổi trình duyệt hoặc thiết bị.</p>
+          </footer>
+        </div>
+      </main>
+    );
+  }
 
   if (activeWorkspace === "finance") {
     return (
@@ -2121,16 +2301,6 @@ export default function Home() {
           onGoalMonthlyContributionChange={setGoalMonthlyContribution}
           onGoalMonthlyInterestChange={setGoalMonthlyInterest}
           suggestedGoalRate={suggestedGoalRate}
-        />
-        <BackupPanel
-          backupStatus={backupStatus}
-          onDismissStatus={() => setBackupStatus(null)}
-          onExport={handleExportBackup}
-          onImport={handleImportBackup}
-          onRestoreVersion={restoreVersion}
-          onUndoLatest={handleUndoLatest}
-          ready={ready}
-          versionHistory={versionHistory}
         />
         <SavingsList
           accounts={finance.accounts}

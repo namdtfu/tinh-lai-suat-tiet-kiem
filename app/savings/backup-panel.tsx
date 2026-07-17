@@ -13,23 +13,50 @@ type VersionView = {
   label: string;
 };
 
+type SafetySnapshotView = {
+  id: string;
+  createdAt: string;
+  label: string;
+};
+
+export type FullBackupSummary = {
+  accounts: number;
+  budgets: number;
+  cashLedger: number;
+  financialGoals: number;
+  prosperity: number;
+  savings: number;
+  transactions: number;
+  versions: number;
+};
+
 export default function BackupPanel<TVersion extends VersionView>({
   backupStatus,
+  backupSummary,
   onDismissStatus,
+  onDownloadSafetySnapshot,
   onExport,
   onImport,
+  onCreateSafetySnapshot,
+  onRestoreSafetySnapshot,
   onRestoreVersion,
   onUndoLatest,
   ready,
+  safetySnapshots,
   versionHistory,
 }: {
   backupStatus: BackupStatus | null;
+  backupSummary: FullBackupSummary;
   onDismissStatus: () => void;
+  onDownloadSafetySnapshot: (id: string) => void;
   onExport: () => void;
   onImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  onCreateSafetySnapshot: () => void;
+  onRestoreSafetySnapshot: (id: string) => void;
   onRestoreVersion: (version: TVersion) => void;
   onUndoLatest: () => void;
   ready: boolean;
+  safetySnapshots: SafetySnapshotView[];
   versionHistory: TVersion[];
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,7 +66,7 @@ export default function BackupPanel<TVersion extends VersionView>({
           <div className="section-heading">
             <div>
               <span className="section-kicker">AN TOÀN DỮ LIỆU</span>
-              <h2 id="backup-title">Sao lưu và khôi phục</h2>
+              <h2 id="backup-title">Sao lưu toàn bộ MoneyMind</h2>
             </div>
             <span className="step-badge">05</span>
           </div>
@@ -66,12 +93,21 @@ export default function BackupPanel<TVersion extends VersionView>({
           <div className="backup-card">
             <span className="backup-icon" aria-hidden="true">↕</span>
             <div className="backup-copy">
-              <h3>Mang dữ liệu sang thiết bị khác</h3>
+              <h3>Một tệp chứa toàn bộ dữ liệu</h3>
               <p>
-                Tải một tệp chứa toàn bộ khoản gửi, lịch sử tái đầu tư, ví tiền
-                chưa tái đầu tư, tài khoản, giao dịch, ngân sách và mục tiêu.
-                Trên thiết bị khác, mở ứng dụng rồi chọn khôi phục từ tệp.
+                Bao gồm Tích lũy, Phát lộc, lịch sử tái đầu tư, ví tiền, tài
+                khoản, giao dịch, ngân sách, tỷ giá, mục tiêu và lịch sử phiên bản.
               </p>
+              <div className="backup-summary" aria-label="Nội dung bản sao lưu">
+                <span>{backupSummary.savings} Tích lũy</span>
+                <span>{backupSummary.prosperity} Phát lộc</span>
+                <span>{backupSummary.accounts} tài khoản</span>
+                <span>{backupSummary.transactions} giao dịch</span>
+                <span>{backupSummary.cashLedger} khoản trong ví</span>
+                <span>{backupSummary.budgets} ngân sách</span>
+                <span>{backupSummary.financialGoals} mục tiêu</span>
+                <span>{backupSummary.versions} mốc lịch sử</span>
+              </div>
             </div>
             <div className="backup-actions">
               <button
@@ -81,7 +117,7 @@ export default function BackupPanel<TVersion extends VersionView>({
                 disabled={!ready}
               >
                 <span aria-hidden="true">↓</span>
-                Tải bản sao lưu
+                Tải bản sao lưu toàn bộ
               </button>
               <button
                 type="button"
@@ -102,10 +138,67 @@ export default function BackupPanel<TVersion extends VersionView>({
               />
             </div>
             <p className="backup-note">
-              Khôi phục sẽ thay thế toàn bộ dữ liệu MoneyMind trên thiết bị
-              hiện tại. Tệp chỉ được xử lý trong trình duyệt và không được tải
-              lên máy chủ.
+              Hãy giữ tệp ở nơi an toàn. Tệp có thể khôi phục dữ liệu sang tên
+              miền, trình duyệt hoặc thiết bị khác.
             </p>
+          </div>
+          <div className="safety-card">
+            <div className="version-heading">
+              <div>
+                <span className="backup-icon safety-icon" aria-hidden="true">◆</span>
+                <div>
+                  <h3>Bản sao an toàn trên thiết bị</h3>
+                  <p>
+                    Tự giữ tối đa 7 bản riêng, không bị xóa khi đồng bộ đám mây.
+                    Bạn vẫn nên tải tệp toàn bộ để phòng mất trình duyệt hoặc thiết bị.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={!ready}
+                onClick={onCreateSafetySnapshot}
+              >
+                Tạo bản sao ngay
+              </button>
+            </div>
+            {safetySnapshots.length ? (
+              <div className="safety-list">
+                {[...safetySnapshots].reverse().map((snapshot) => (
+                  <div key={snapshot.id}>
+                    <span aria-hidden="true">●</span>
+                    <div>
+                      <strong>{snapshot.label}</strong>
+                      <small>
+                        {new Intl.DateTimeFormat("vi-VN", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        }).format(new Date(snapshot.createdAt))}
+                      </small>
+                    </div>
+                    <div className="safety-actions">
+                      <button
+                        type="button"
+                        onClick={() => onDownloadSafetySnapshot(snapshot.id)}
+                      >
+                        Tải xuống
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRestoreSafetySnapshot(snapshot.id)}
+                      >
+                        Khôi phục
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="safety-empty">
+                Bản sao đầu tiên sẽ được tạo khi có dữ liệu hoặc khi bạn bấm nút phía trên.
+              </p>
+            )}
           </div>
           <div className="version-card">
             <div className="version-heading">
