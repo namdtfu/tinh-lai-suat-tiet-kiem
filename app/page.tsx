@@ -9,6 +9,15 @@ import {
   useState,
 } from "react";
 import {
+  normalizeProsperityItem,
+  type ProsperityItem,
+} from '@/lib/prosperity';
+import ProductSwitcher, {
+  type SavingsProduct,
+} from './savings/product-switcher';
+import ProsperityDashboard from './savings/prosperity-dashboard';
+
+import {
   CloudConflictError,
   CloudSession,
   consumeMagicLinkSession,
@@ -111,6 +120,8 @@ const EXCHANGE_SETTINGS_KEY = "exchangeSettings";
 const FINANCIAL_GOALS_KEY = "financialGoals";
 const VERSION_HISTORY_KEY = "versionHistory";
 const WORKSPACE_KEY = "activeWorkspace";
+const PROSPERITY_KEY = 'prosperityItems';
+
 function createSavingsFinanceTransaction({
   accountId,
   amount,
@@ -166,6 +177,7 @@ function readStoredRecord<T>(key: string): T | null {
 
 export default function Home() {
   const [savings, setSavings] = useState<SavingsItem[]>([]);
+  const [prosperityItems, setProsperityItems] = useState<ProsperityItem[]>([]);
   const [interestRates, setInterestRates] = useState(DEFAULT_INTEREST_RATES);
   const [cashLedger, setCashLedger] = useState<CashLedgerEntry[]>([]);
   const [finance, setFinance] = useState<FinanceState>(() =>
@@ -177,6 +189,8 @@ export default function Home() {
   const [versionHistory, setVersionHistory] = useState<AppVersion[]>([]);
   const [activeWorkspace, setActiveWorkspace] =
     useState<AppWorkspace>("savings");
+  const [activeSavingsProduct, setActiveSavingsProduct] =
+    useState<SavingsProduct>('accumulation');
   const [form, setForm] = useState<SavingsForm>(createEmptySavingsForm());
   const [newInterestRate, setNewInterestRate] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -229,6 +243,7 @@ export default function Home() {
   const currentCore = useMemo<AppStateCore>(
     () => ({
       savings,
+      prosperity: prosperityItems,
       interestRates,
       cashLedger,
       finance,
@@ -249,6 +264,7 @@ export default function Home() {
       goalMonthlyContribution,
       goalMonthlyInterest,
       interestRates,
+      prosperityItems,
       savings,
     ],
   );
@@ -256,6 +272,7 @@ export default function Home() {
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- localStorage is client-only, so persisted data must be hydrated after mount. */
     const storedSavings = readStoredArray<SavingsItem>(SAVINGS_KEY);
+    const storedProsperity = readStoredArray<unknown>(PROSPERITY_KEY);
     const storedRates = readStoredArray<number>(RATES_KEY);
     const storedCashLedger = readStoredArray<CashLedgerEntry>(CASH_LEDGER_KEY);
     const storedGoal = readStoredRecord<CloudAppState["goal"]>(
@@ -275,6 +292,11 @@ export default function Home() {
     const localSavings = storedSavings
       ? storedSavings.map(recalculateSavingsItem)
       : [];
+    const localProsperity =
+      storedProsperity?.flatMap((item) => {
+        const normalized = normalizeProsperityItem(item);
+        return normalized ? [normalized] : [];
+      }) ?? [];
     const localRates = storedRates
       ? storedRates
           .filter(
@@ -304,6 +326,7 @@ export default function Home() {
     const localVersionHistory = normalizeVersionHistory(storedVersionHistory);
 
     setSavings(localSavings);
+    setProsperityItems(localProsperity);
     setInterestRates(localRates);
     setCashLedger(localCashLedger);
     setFinance(localFinance);
@@ -347,6 +370,7 @@ export default function Home() {
             throw new Error("Dữ liệu trên tài khoản không đúng định dạng.");
           }
           setSavings(remoteState.savings);
+          setProsperityItems(remoteState.prosperity);
           setInterestRates(remoteState.interestRates);
           setCashLedger(remoteState.cashLedger);
           setFinance(remoteState.finance);
@@ -368,6 +392,7 @@ export default function Home() {
             );
           const hasLocalData = Boolean(
             localSavings.length ||
+              localProsperity.length ||
               localCashLedger.length ||
               hasCustomRates ||
               localGoal.monthlyInterest ||
@@ -413,6 +438,15 @@ export default function Home() {
       localStorage.setItem(SAVINGS_KEY, JSON.stringify(savings));
     }
   }, [authStatus, cloudReady, migrationPending, ready, savings]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (authStatus === 'signed-in' && cloudReady && !migrationPending) {
+      localStorage.removeItem(PROSPERITY_KEY);
+    } else if (authStatus === 'local' || migrationPending) {
+      localStorage.setItem(PROSPERITY_KEY, JSON.stringify(prosperityItems));
+    }
+  }, [authStatus, cloudReady, migrationPending, prosperityItems, ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -603,6 +637,7 @@ export default function Home() {
         const remoteCore = getCoreFromCloudState(remoteState);
         lastCoreSignatureRef.current = JSON.stringify(remoteCore);
         setSavings(remoteCore.savings);
+        setProsperityItems(remoteCore.prosperity);
         setInterestRates(remoteCore.interestRates);
         setCashLedger(remoteCore.cashLedger);
         setFinance(remoteCore.finance);
@@ -721,6 +756,14 @@ export default function Home() {
   const activeSavings = useMemo(
     () => savings.filter((item) => item.status !== "settled"),
     [savings],
+  );
+  const activeProsperityItems = useMemo(
+    () => prosperityItems.filter((item) => item.status === 'growing'),
+    [prosperityItems],
+  );
+  const prosperityPrincipal = useMemo(
+    () => activeProsperityItems.reduce((sum, item) => sum + item.amount, 0),
+    [activeProsperityItems],
   );
   const vndAccounts = useMemo(
     () => finance.accounts.filter((account) => account.currency === "VND"),
@@ -1138,6 +1181,24 @@ export default function Home() {
     closeSettlement();
   }
 
+  function handleAddProsperity(item: ProsperityItem) {
+    setProsperityItems((items) => [...items, item]);
+  }
+
+  function handleHarvestProsperity(id: string) {
+    setProsperityItems((items) =>
+      items.map((item) =>
+        item.id === id
+          ? { ...item, status: 'harvested', harvestedAt: today }
+          : item,
+      ),
+    );
+  }
+
+  function handleDeleteProsperity(id: string) {
+    setProsperityItems((items) => items.filter((item) => item.id !== id));
+  }
+
   function handleAddRate() {
     const rate = Number(newInterestRate);
     if (!Number.isFinite(rate) || rate <= 0 || rate > 100) {
@@ -1292,6 +1353,7 @@ export default function Home() {
     };
     lastCoreSignatureRef.current = JSON.stringify(repairedCore);
     setSavings(repairedCore.savings);
+    setProsperityItems(repairedCore.prosperity);
     setInterestRates(repairedCore.interestRates);
     setCashLedger(repairedCore.cashLedger);
     setFinance(repairedCore.finance);
@@ -1340,7 +1402,7 @@ export default function Home() {
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
     setBackupStatus({
       kind: "success",
-      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản gửi, ${cashLedger.length} giao dịch ví và ${finance.transactions.length} giao dịch thu chi. Hãy lưu tệp vào nơi bạn có thể mở trên thiết bị khác.`,
+      text: `Đã tạo bản sao lưu gồm ${savings.length} khoản Tích lũy, ${prosperityItems.length} khoản Phát lộc, ${cashLedger.length} giao dịch ví và ${finance.transactions.length} giao dịch thu chi.`,
     });
   }
 
@@ -1362,7 +1424,7 @@ export default function Home() {
       if (!payload) throw new Error("Invalid backup");
 
       const shouldRestore = window.confirm(
-        `Khôi phục ${payload.savings.length} khoản gửi, ${payload.cashLedger.length} giao dịch ví và ${payload.finance.transactions.length} giao dịch thu chi từ bản sao lưu? Toàn bộ dữ liệu hiện có trên thiết bị này sẽ bị thay thế.`,
+        `Khôi phục ${payload.savings.length} khoản Tích lũy, ${payload.prosperity.length} khoản Phát lộc và dữ liệu thu chi từ bản sao lưu? Toàn bộ dữ liệu hiện có trên thiết bị này sẽ bị thay thế.`,
       );
       if (!shouldRestore) return;
 
@@ -1373,7 +1435,7 @@ export default function Home() {
       resetForm();
       setBackupStatus({
         kind: "success",
-        text: `Đã khôi phục ${payload.savings.length} khoản gửi và ${payload.finance.transactions.length} giao dịch thu chi. Dữ liệu đã được lưu trên thiết bị này.`,
+        text: `Đã khôi phục ${payload.savings.length} khoản Tích lũy và ${payload.prosperity.length} khoản Phát lộc. Dữ liệu đã được lưu trên thiết bị này.`,
       });
     } catch {
       setBackupStatus({
@@ -1562,6 +1624,7 @@ export default function Home() {
       const activeSession = await ensureCloudSession(cloudSession);
       const emptyCore: AppStateCore = {
         savings: [],
+        prosperity: [],
         interestRates: DEFAULT_INTEREST_RATES,
         cashLedger: [],
         finance: createDefaultFinanceState(),
@@ -1574,6 +1637,7 @@ export default function Home() {
       if (row) lastCloudUpdatedAtRef.current = row.updated_at;
       skipNextCloudWriteRef.current = true;
       setSavings([]);
+      setProsperityItems([]);
       setInterestRates(DEFAULT_INTEREST_RATES);
       setCashLedger([]);
       setFinance(createDefaultFinanceState());
@@ -1718,7 +1782,8 @@ export default function Home() {
           <span className="auth-mark" aria-hidden="true">⇧</span>
           <h1>Thiết bị này đang có dữ liệu cũ</h1>
           <p>
-            Tìm thấy <strong>{savings.length} khoản gửi</strong> và{
+            Tìm thấy <strong>{savings.length} khoản Tích lũy</strong>,{
+            ' '}<strong>{prosperityItems.length} khoản Phát lộc</strong> và{
             " "}<strong>{cashLedger.length} giao dịch ví</strong>, cùng{
             " "}<strong>{finance.transactions.length} giao dịch thu chi</strong>. Ứng dụng sẽ
             không tự ghi đè cho đến khi bạn chọn.
@@ -1928,6 +1993,23 @@ export default function Home() {
         {appHeader}
         {cloudBanner}
 
+        <ProductSwitcher
+          activeProduct={activeSavingsProduct}
+          accumulationPrincipal={summary.principal}
+          onChange={setActiveSavingsProduct}
+          prosperityPrincipal={prosperityPrincipal}
+        />
+
+        {activeSavingsProduct === 'prosperity' ? (
+          <ProsperityDashboard
+            items={prosperityItems}
+            onAdd={handleAddProsperity}
+            onDelete={handleDeleteProsperity}
+            onHarvest={handleHarvestProsperity}
+            today={today}
+          />
+        ) : (
+          <>
         <ActionCenter
           budgetAlerts={budgetAlerts}
           maturityAlerts={maturityAlerts}
@@ -2016,6 +2098,8 @@ export default function Home() {
             onDraftChange={setSettlementDraft}
             onSubmit={handleSettlement}
           />
+        )}
+          </>
         )}
         <footer>
           <p>

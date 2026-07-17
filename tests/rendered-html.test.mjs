@@ -216,8 +216,9 @@ test("includes a versioned local backup and restore flow", async () => {
     ])
   ).join("\n");
 
-  assert.match(page, /const BACKUP_FORMAT_VERSION = 6/);
-  assert.match(page, /\[1, 2, 3, 4, 5, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 7/);
+  assert.match(page, /\[1, 2, 3, 4, 5, 6, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
+  assert.match(page, /prosperity: ProsperityItem\[\]/);
   assert.match(page, /function parseBackupPayload\(/);
   assert.match(page, /cashLedger: CashLedgerEntry\[\]/);
   assert.match(page, /finance: FinanceState/);

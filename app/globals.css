@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "./savings/savings-visuals.css";
 
+@import './savings/prosperity.css';
+
 :root {
   --ink: #201b2c;
   --muted: #746f7f;

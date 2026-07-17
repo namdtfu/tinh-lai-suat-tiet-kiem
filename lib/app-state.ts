@@ -1,4 +1,9 @@
 import {
+  normalizeProsperityItem,
+  type ProsperityItem,
+} from './prosperity';
+
+import {
   createDefaultFinanceState,
   type FinanceState,
   normalizeFinanceState,
@@ -21,7 +26,7 @@ import {
   toLocalIso,
 } from "./savings";
 export const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
-export const BACKUP_FORMAT_VERSION = 6;
+export const BACKUP_FORMAT_VERSION = 7;
 export const MAX_BACKUP_SIZE = 5_000_000;
 
 export type AppWorkspace = "savings" | "finance" | "goals";
@@ -48,6 +53,7 @@ export type BackupPayload = {
   version: typeof BACKUP_FORMAT_VERSION;
   exportedAt: string;
   savings: SavingsItem[];
+  prosperity: ProsperityItem[];
   interestRates: number[];
   cashLedger: CashLedgerEntry[];
   finance: FinanceState;
@@ -67,11 +73,12 @@ export type CloudAppState = {
   goal: GoalSettings;
   interestRates: number[];
   savings: SavingsItem[];
+  prosperity: ProsperityItem[];
   finance: FinanceState;
   exchange: ExchangeRateSettings;
   financialGoals: FinancialGoal[];
   versionHistory: AppVersion[];
-  schemaVersion: 5;
+  schemaVersion: 6;
 };
 
 export type AppStateCore = {
@@ -82,6 +89,7 @@ export type AppStateCore = {
   goal: GoalSettings;
   interestRates: number[];
   savings: SavingsItem[];
+  prosperity: ProsperityItem[];
 };
 
 export type AppVersion = {
@@ -279,11 +287,18 @@ export function normalizeGoalSettings(value: unknown): GoalSettings {
 function normalizeAppStateCore(value: unknown): AppStateCore | null {
   if (!isRecord(value)) return null;
   const rawSavings = Array.isArray(value.savings) ? value.savings : null;
+  const rawProsperity =
+    value.prosperity === undefined
+      ? []
+      : Array.isArray(value.prosperity)
+        ? value.prosperity
+        : null;
   const rawRates = Array.isArray(value.interestRates) ? value.interestRates : null;
   const rawCashLedger = Array.isArray(value.cashLedger) ? value.cashLedger : null;
-  if (!rawSavings || !rawRates || !rawCashLedger) return null;
+  if (!rawSavings || !rawProsperity || !rawRates || !rawCashLedger) return null;
 
   const savings = rawSavings.map(normalizeBackupItem);
+  const prosperity = rawProsperity.map(normalizeProsperityItem);
   const interestRates = rawRates.map(Number);
   const cashLedger = rawCashLedger.map(normalizeCashLedgerEntry);
   const savingsIds = new Set(
@@ -291,6 +306,7 @@ function normalizeAppStateCore(value: unknown): AppStateCore | null {
   );
   if (
     savings.some((item) => item === null) ||
+    prosperity.some((item) => item === null) ||
     cashLedger.some((entry) => entry === null) ||
     savingsIds.size !== savings.length ||
     interestRates.some(
@@ -302,6 +318,7 @@ function normalizeAppStateCore(value: unknown): AppStateCore | null {
 
   return {
     savings: savings as SavingsItem[],
+    prosperity: prosperity as ProsperityItem[],
     interestRates: [...new Set(interestRates)],
     cashLedger: cashLedger as CashLedgerEntry[],
     finance: normalizeFinanceState(value.finance),
@@ -348,13 +365,15 @@ export function parseBackupPayload(value: unknown): BackupPayload | null {
     isRecord(value) && version >= 6 ? value.exchange : DEFAULT_EXCHANGE_SETTINGS;
   const rawFinancialGoals =
     isRecord(value) && version >= 6 ? value.financialGoals : [];
+  const rawProsperity =
+    isRecord(value) && version >= 7 ? value.prosperity : [];
   const rawVersionHistory =
     isRecord(value) && version >= 6 ? value.versionHistory : [];
 
   if (
     !isRecord(value) ||
     value.app !== BACKUP_APP_ID ||
-    ![1, 2, 3, 4, 5, BACKUP_FORMAT_VERSION].includes(version) ||
+    ![1, 2, 3, 4, 5, 6, BACKUP_FORMAT_VERSION].includes(version) ||
     typeof value.exportedAt !== "string" ||
     !Array.isArray(value.savings) ||
     !Array.isArray(value.interestRates) ||
@@ -365,6 +384,7 @@ export function parseBackupPayload(value: unknown): BackupPayload | null {
 
   const core = normalizeAppStateCore({
     savings: value.savings,
+    prosperity: rawProsperity,
     interestRates: value.interestRates,
     cashLedger: rawCashLedger,
     finance: rawFinance,
@@ -392,7 +412,7 @@ export function parseCloudAppState(value: unknown): CloudAppState | null {
   const schemaVersion = isRecord(value) ? Number(value.schemaVersion) : 0;
   if (
     !isRecord(value) ||
-    ![1, 2, 3, 4, 5].includes(schemaVersion)
+    ![1, 2, 3, 4, 5, 6].includes(schemaVersion)
   ) {
     return null;
   }
@@ -402,6 +422,7 @@ export function parseCloudAppState(value: unknown): CloudAppState | null {
     version: BACKUP_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     savings: value.savings,
+    prosperity: schemaVersion >= 6 ? value.prosperity : [],
     interestRates: value.interestRates,
     cashLedger: value.cashLedger,
     finance: schemaVersion >= 2 ? value.finance : createDefaultFinanceState(),
@@ -413,8 +434,9 @@ export function parseCloudAppState(value: unknown): CloudAppState | null {
   if (!backup) return null;
 
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     savings: backup.savings,
+    prosperity: backup.prosperity,
     interestRates: backup.interestRates,
     cashLedger: backup.cashLedger,
     finance: backup.finance,
@@ -430,7 +452,7 @@ export function createCloudAppState(
   versionHistory: AppVersion[],
 ): CloudAppState {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     ...core,
     versionHistory,
   };
@@ -439,6 +461,7 @@ export function createCloudAppState(
 export function getCoreFromCloudState(state: CloudAppState): AppStateCore {
   return {
     savings: state.savings,
+    prosperity: state.prosperity,
     interestRates: state.interestRates,
     cashLedger: state.cashLedger,
     finance: state.finance,
