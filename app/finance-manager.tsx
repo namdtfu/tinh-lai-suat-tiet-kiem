@@ -241,7 +241,8 @@ export default function FinanceManager({
             transactionFilter === "all" ||
               (transactionFilter === "savings"
                 ? transaction.type === "savings-deposit" ||
-                  transaction.type === "savings-settlement"
+                  transaction.type === "savings-settlement" ||
+                  transaction.type === 'prosperity-deposit'
                 : transaction.type === transactionFilter),
         )
         .sort(
@@ -308,7 +309,8 @@ export default function FinanceManager({
   ) {
     if (
       transaction.type === "savings-deposit" ||
-      transaction.type === "savings-settlement"
+      transaction.type === "savings-settlement" ||
+      transaction.type === 'prosperity-deposit'
     ) {
       return;
     }
@@ -748,6 +750,9 @@ export default function FinanceManager({
   }
 
   function getTransactionMeta(transaction: FinanceState["transactions"][number]) {
+    if (transaction.type === 'prosperity-deposit') {
+      return { icon: '♧', name: 'Đầu tư Phát lộc', detail: transaction.note };
+    }
     if (transaction.type === "savings-deposit") {
       return { icon: "↗", name: "Gửi tiết kiệm", detail: transaction.note };
     }
@@ -780,7 +785,10 @@ export default function FinanceManager({
       (item) => item.id === transaction.accountId,
     );
     if (!account) return "";
-    if (transaction.type === "savings-deposit") {
+    if (
+      transaction.type === "savings-deposit" ||
+      transaction.type === 'prosperity-deposit'
+    ) {
       return `−${formatMoney(transaction.amount, account.currency)}`;
     }
     if (transaction.type === "savings-settlement") {
@@ -1028,7 +1036,7 @@ export default function FinanceManager({
                   return <div key={transaction.id} className={styles.transactionRow}>
                     <span className={styles.roundIcon}>{meta.icon}</span>
                     <div><strong>{meta.name}</strong><small>{formatShortDate(transaction.date)}{meta.detail ? ` · ${meta.detail}` : ""}{transaction.updatedAt ? " · Đã sửa" : ""}</small></div>
-                    <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
+                    <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" || transaction.type === 'prosperity-deposit' ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
                   </div>;
                 })}
               </div>
@@ -1149,7 +1157,7 @@ export default function FinanceManager({
                 Quản lý nhóm
               </button>
               <select value={transactionFilter} onChange={(event) => setTransactionFilter(event.target.value as TransactionFilter)} aria-label="Lọc giao dịch">
-                <option value="all">Tất cả</option><option value="income">Khoản thu</option><option value="expense">Khoản chi</option><option value="transfer">Chuyển khoản</option><option value="savings">Tiết kiệm</option>
+                <option value="all">Tất cả</option><option value="income">Khoản thu</option><option value="expense">Khoản chi</option><option value="transfer">Chuyển khoản</option><option value="savings">Tiết kiệm & Phát lộc</option>
               </select>
             </div>
           </div>
@@ -1161,8 +1169,8 @@ export default function FinanceManager({
                 return <div key={transaction.id} className={styles.transactionRow}>
                   <span className={styles.roundIcon}>{meta.icon}</span>
                   <div><strong>{meta.name}</strong><small>{formatShortDate(transaction.date)} · {transaction.note || account?.name}{transaction.updatedAt ? " · Đã sửa" : ""}</small></div>
-                  <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
-                  {transaction.type === "savings-deposit" || transaction.type === "savings-settlement" ? (
+                  <b className={transaction.type === "income" || transaction.type === "savings-settlement" ? styles.income : transaction.type === "expense" || transaction.type === "savings-deposit" || transaction.type === 'prosperity-deposit' ? styles.expense : ""}>{getTransactionValue(transaction)}</b>
+                  {transaction.type === "savings-deposit" || transaction.type === "savings-settlement" || transaction.type === 'prosperity-deposit' ? (
                     <span className={styles.systemEntry}>Tự động</span>
                   ) : (
                     <div className={styles.rowActions}>

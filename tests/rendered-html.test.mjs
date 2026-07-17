@@ -263,6 +263,7 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Chuyển khoản/);
   assert.match(manager, /Gửi tiết kiệm/);
   assert.match(manager, /Tất toán tiết kiệm/);
+  assert.match(manager, /Đầu tư Phát lộc/);
   assert.match(manager, /Số tiền thực nhận/);
   assert.match(manager, /Tỷ giá thực tế/);
   assert.match(manager, /ĐƠN VỊ NHẬP/);
@@ -291,6 +292,8 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(finance, /transaction\.toAmount \?\? transaction\.amount/);
   assert.match(finance, /transaction\.type === "savings-deposit"/);
   assert.match(finance, /transaction\.type === "savings-settlement"/);
+  assert.match(finance, /transaction\.type === 'prosperity-deposit'/);
+  assert.match(finance, /linkedProsperityId/);
   assert.match(finance, /currency: normalizeCurrency\(value\.currency, "VND"\)/);
   assert.match(finance, /const isEmptyLegacyDefault/);
   assert.match(finance, /account\.currency === "KRW"/);
@@ -331,6 +334,25 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
   assert.match(page, /Tăng trưởng tiền tiết kiệm/);
   assert.match(page, /className="savings-trend-svg"/);
   assert.match(page, /setSelectedMonth/);
+});
+
+test("includes editable Phát lộc with an optional VND funding account", async () => {
+  const source = (
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/prosperity-dashboard.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../lib/finance.ts", import.meta.url), "utf8"),
+      readFile(new URL("../lib/app-state.ts", import.meta.url), "utf8"),
+    ])
+  ).join("\n");
+
+  assert.match(source, /function handleSaveProsperity/);
+  assert.match(source, /function startEditing/);
+  assert.match(source, /Tài khoản nguồn/);
+  assert.match(source, /ngân hàng, ví điện tử hoặc tiền mặt/);
+  assert.match(source, /Lưu thay đổi/);
+  assert.match(source, /transaction\.linkedProsperityId !== id/);
+  assert.match(source, /reconcileProsperityFundingTransactions/);
 });
 
 test("includes invite-only realtime cloud accounts with per-user database isolation", async () => {

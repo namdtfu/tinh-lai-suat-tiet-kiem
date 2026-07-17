@@ -51,6 +51,7 @@ test('Phát lộc progress is measured in days but displayed as a weekly term', 
     id: 'prosperity-2',
     amount: 9_817_800,
     annualInterestRate: 7.69,
+    fundingAccountId: 'vnd-bank',
     termDays: 4,
     termWeeks: 12,
     startDate: '2026-07-13',
@@ -58,6 +59,7 @@ test('Phát lộc progress is measured in days but displayed as a weekly term', 
   });
 
   assert.ok(item);
+  assert.equal(item.fundingAccountId, 'vnd-bank');
   const progress = getProsperityProgress(item, '2026-08-26');
   assert.equal(progress.totalDays, 88);
   assert.equal(progress.elapsedDays, 44);

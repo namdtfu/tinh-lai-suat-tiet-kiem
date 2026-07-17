@@ -5,7 +5,8 @@ export type FinanceTransactionType =
   | "expense"
   | "transfer"
   | "savings-deposit"
-  | "savings-settlement";
+  | 'savings-settlement'
+  | 'prosperity-deposit';
 export type FinanceCurrency = "KRW" | "VND";
 
 export type FinanceAccount = {
@@ -38,6 +39,7 @@ export type FinanceTransaction = {
   toAccountId?: string;
   toAmount?: number;
   linkedSavingsId?: number;
+  linkedProsperityId?: string;
   note: string;
   createdAt: string;
   updatedAt?: string;
@@ -73,6 +75,15 @@ export type FinanceSavingsFundingSource = {
   name: string;
   startDate: string;
   status?: "active" | "settled";
+};
+
+export type FinanceProsperityFundingSource = {
+  amount: number;
+  fundingAccountId?: string;
+  id: string;
+  name: string;
+  startDate: string;
+  status?: 'growing' | 'harvested';
 };
 
 export type FinanceBudgetPlanSnapshot = {
@@ -145,7 +156,8 @@ const TRANSACTION_TYPES = new Set<FinanceTransactionType>([
   "expense",
   "transfer",
   "savings-deposit",
-  "savings-settlement",
+  'savings-settlement',
+  'prosperity-deposit',
 ]);
 const AMOUNT_INPUT_FORMATTER = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 0,
@@ -282,6 +294,7 @@ function normalizeTransaction(
   const categoryId = cleanText(value.categoryId, "", 100);
   const toAccountId = cleanText(value.toAccountId, "", 100);
   const linkedSavingsId = Number(value.linkedSavingsId);
+  const linkedProsperityId = cleanText(value.linkedProsperityId, '', 120);
   if (
     !id ||
     !TRANSACTION_TYPES.has(type as FinanceTransactionType) ||
@@ -308,6 +321,8 @@ function normalizeTransaction(
     type === "savings-settlement"
   ) {
     if (!Number.isFinite(linkedSavingsId) || linkedSavingsId <= 0) return null;
+  } else if (type === 'prosperity-deposit') {
+    if (!linkedProsperityId) return null;
   } else if (!categoryId || !categoryIds.has(categoryId)) {
     return null;
   }
@@ -324,6 +339,7 @@ function normalizeTransaction(
     ...(type === "savings-deposit" || type === "savings-settlement"
       ? { linkedSavingsId }
       : {}),
+    ...(type === 'prosperity-deposit' ? { linkedProsperityId } : {}),
     note: cleanText(value.note, "", 240),
     createdAt:
       typeof value.createdAt === "string"
@@ -576,6 +592,67 @@ export function reconcileSavingsFundingTransactions(
   };
 }
 
+export function reconcileProsperityFundingTransactions(
+  state: FinanceState,
+  prosperity: FinanceProsperityFundingSource[],
+) {
+  const vndAccountIds = new Set(
+    state.accounts
+      .filter((account) => account.currency === 'VND')
+      .map((account) => account.id),
+  );
+  const recordedProsperityIds = new Set(
+    state.transactions.flatMap((transaction) =>
+      transaction.type === 'prosperity-deposit' &&
+      transaction.linkedProsperityId
+        ? [transaction.linkedProsperityId]
+        : [],
+    ),
+  );
+  const transactionIds = new Set(
+    state.transactions.map((transaction) => transaction.id),
+  );
+  const recoveredTransactions: FinanceTransaction[] = [];
+
+  for (const item of prosperity) {
+    const amount = Number(item.amount);
+    const prosperityId = cleanText(item.id, '', 120);
+    const transactionId = `prosperity-${prosperityId}-funding`;
+    if (
+      !prosperityId ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !isValidDate(item.startDate) ||
+      !item.fundingAccountId ||
+      !vndAccountIds.has(item.fundingAccountId) ||
+      recordedProsperityIds.has(prosperityId) ||
+      transactionIds.has(transactionId)
+    ) {
+      continue;
+    }
+
+    const name = cleanText(item.name, 'Khoản Phát lộc', 120);
+    recoveredTransactions.push({
+      accountId: item.fundingAccountId,
+      amount,
+      createdAt: `${item.startDate}T00:00:00.000Z`,
+      date: item.startDate,
+      id: transactionId,
+      linkedProsperityId: prosperityId,
+      note: `Đầu tư ${name}`,
+      type: 'prosperity-deposit',
+    });
+    recordedProsperityIds.add(prosperityId);
+    transactionIds.add(transactionId);
+  }
+
+  if (!recoveredTransactions.length) return state;
+  return {
+    ...state,
+    transactions: [...recoveredTransactions, ...state.transactions],
+  };
+}
+
 export function monthKeyFromIso(date: string) {
   return date.slice(0, 7);
 }
@@ -599,6 +676,12 @@ export function calculateAccountBalance(
     }
     if (
       transaction.type === "savings-deposit" &&
+      transaction.accountId === account.id
+    ) {
+      return balance - transaction.amount;
+    }
+    if (
+      transaction.type === 'prosperity-deposit' &&
       transaction.accountId === account.id
     ) {
       return balance - transaction.amount;

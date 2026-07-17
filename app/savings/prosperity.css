@@ -233,7 +233,8 @@
   font-size: 0.64rem;
   font-weight: 500;
 }
-.prosperity-form input {
+.prosperity-form input,
+.prosperity-form select {
   width: 100%;
   height: 46px;
   margin-top: 6px;
@@ -244,9 +245,20 @@
   border-radius: 10px;
   outline: none;
 }
-.prosperity-form input:focus {
+.prosperity-form input:focus,
+.prosperity-form select:focus {
   border-color: var(--prosperity);
   box-shadow: 0 0 0 3px rgba(21, 151, 92, 0.11);
+}
+.prosperity-manage-accounts {
+  margin-top: 8px;
+  padding: 0;
+  color: var(--prosperity-dark);
+  background: transparent;
+  border: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: left;
 }
 .prosperity-form fieldset { border: 0; }
 .week-presets {
@@ -320,6 +332,12 @@
 .prosperity-preview strong { margin-top: 5px; font-size: 0.75rem; }
 .prosperity-positive { color: var(--prosperity) !important; }
 .prosperity-message { margin-top: 11px; color: var(--prosperity-dark); font-size: 0.72rem; }
+.prosperity-form-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  margin-top: 14px;
+}
 .prosperity-submit {
   display: flex;
   align-items: center;
@@ -327,7 +345,7 @@
   gap: 8px;
   width: 100%;
   min-height: 48px;
-  margin-top: 14px;
+  margin-top: 0;
   color: #fff;
   background: linear-gradient(135deg, #14965b, #087342);
   border: 0;
@@ -337,6 +355,16 @@
   font-weight: 850;
 }
 .prosperity-submit span { font-size: 1rem; }
+.prosperity-cancel-edit {
+  min-height: 48px;
+  padding: 0 16px;
+  color: #6d6474;
+  background: #fff;
+  border: 1px solid #dcd5e2;
+  border-radius: 11px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
 
 .prosperity-list-section { padding: clamp(20px, 4vw, 30px); }
 .prosperity-list-heading,
@@ -422,6 +450,10 @@
   font-size: 0.64rem;
   text-align: right;
 }
+.prosperity-timeline > .prosperity-funding-source {
+  color: #397253;
+  text-align: left;
+}
 .prosperity-item-actions { justify-content: flex-end; margin-top: 14px; }
 .prosperity-item-actions button {
   min-height: 34px;
@@ -437,6 +469,11 @@
   color: #8b5360;
   background: transparent;
   border-color: #e4cfd4;
+}
+.prosperity-item-actions .prosperity-edit {
+  color: var(--prosperity-dark);
+  background: var(--prosperity-pale);
+  border-color: #c6e7d5;
 }
 .prosperity-empty {
   padding: 44px 20px;
@@ -484,4 +521,5 @@
   .prosperity-rate { width: 100%; margin-left: 58px; }
   .prosperity-progress-copy { align-items: flex-start; flex-direction: column; gap: 3px; }
   .prosperity-progress-copy strong { text-align: left; }
+  .prosperity-form-actions { grid-template-columns: 1fr; }
 }

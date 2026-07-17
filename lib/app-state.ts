@@ -7,6 +7,7 @@ import {
   createDefaultFinanceState,
   type FinanceState,
   normalizeFinanceState,
+  reconcileProsperityFundingTransactions,
   reconcileSavingsFundingTransactions,
 } from "./finance";
 import {
@@ -393,9 +394,9 @@ export function parseBackupPayload(value: unknown): BackupPayload | null {
     financialGoals: rawFinancialGoals,
   });
   if (!core) return null;
-  const repairedFinance = reconcileSavingsFundingTransactions(
-    core.finance,
-    core.savings,
+  const repairedFinance = reconcileProsperityFundingTransactions(
+    reconcileSavingsFundingTransactions(core.finance, core.savings),
+    core.prosperity,
   );
 
   return {

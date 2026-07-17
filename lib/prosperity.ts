@@ -14,6 +14,7 @@ export type ProsperityItem = {
   name: string;
   amount: number;
   annualInterestRate: number;
+  fundingAccountId?: string;
   termDays: number;
   termWeeks: number;
   startDate: string;
@@ -132,6 +133,10 @@ export function normalizeProsperityItem(
   const name = typeof item.name === 'string' ? item.name.trim() : '';
   const amount = Number(item.amount);
   const annualInterestRate = Number(item.annualInterestRate);
+  const fundingAccountId =
+    typeof item.fundingAccountId === 'string'
+      ? item.fundingAccountId.trim()
+      : '';
   const termWeeks = Number(item.termWeeks);
   const termDays = item.termDays === undefined ? 0 : Number(item.termDays);
   const status: ProsperityStatus =
@@ -164,6 +169,9 @@ export function normalizeProsperityItem(
     name: (name || `Phát lộc ${formatProsperityTerm(termWeeks, termDays)}`).slice(0, 200),
     amount,
     annualInterestRate,
+    ...(fundingAccountId
+      ? { fundingAccountId: fundingAccountId.slice(0, 100) }
+      : {}),
     termDays,
     termWeeks,
     startDate: item.startDate,

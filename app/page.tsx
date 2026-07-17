@@ -79,6 +79,7 @@ import {
   getCategorySpent,
   hasMeaningfulFinanceData,
   normalizeFinanceState,
+  reconcileProsperityFundingTransactions,
   reconcileSavingsFundingTransactions,
 } from "@/lib/finance";
 import {
@@ -317,9 +318,12 @@ export default function Home() {
       interestRate: storedGoal?.interestRate ?? "",
       monthlyContribution: storedGoal?.monthlyContribution ?? "",
     };
-    const localFinance = reconcileSavingsFundingTransactions(
-      normalizeFinanceState(storedFinance),
-      localSavings,
+    const localFinance = reconcileProsperityFundingTransactions(
+      reconcileSavingsFundingTransactions(
+        normalizeFinanceState(storedFinance),
+        localSavings,
+      ),
+      localProsperity,
     );
     const localExchange = normalizeExchangeSettings(storedExchange);
     const localFinancialGoals = normalizeFinancialGoals(storedFinancialGoals);
@@ -1181,8 +1185,52 @@ export default function Home() {
     closeSettlement();
   }
 
-  function handleAddProsperity(item: ProsperityItem) {
-    setProsperityItems((items) => [...items, item]);
+  function handleSaveProsperity(item: ProsperityItem) {
+    setProsperityItems((items) => {
+      const exists = items.some((candidate) => candidate.id === item.id);
+      return exists
+        ? items.map((candidate) => candidate.id === item.id ? item : candidate)
+        : [...items, item];
+    });
+
+    setFinance((current) => {
+      const transactionId = `prosperity-${item.id}-funding`;
+      const existing = current.transactions.find(
+        (transaction) =>
+          transaction.id === transactionId ||
+          transaction.linkedProsperityId === item.id,
+      );
+      const transactions = current.transactions.filter(
+        (transaction) =>
+          transaction.id !== transactionId &&
+          transaction.linkedProsperityId !== item.id,
+      );
+      const account = current.accounts.find(
+        (candidate) =>
+          candidate.id === item.fundingAccountId &&
+          candidate.currency === "VND",
+      );
+      if (!account) return { ...current, transactions };
+
+      const now = new Date().toISOString();
+      return {
+        ...current,
+        transactions: [
+          {
+            accountId: account.id,
+            amount: item.amount,
+            createdAt: existing?.createdAt ?? now,
+            date: item.startDate,
+            id: transactionId,
+            linkedProsperityId: item.id,
+            note: `Đầu tư ${item.name}`,
+            type: 'prosperity-deposit',
+            ...(existing ? { updatedAt: now } : {}),
+          },
+          ...transactions,
+        ],
+      };
+    });
   }
 
   function handleHarvestProsperity(id: string) {
@@ -1197,6 +1245,12 @@ export default function Home() {
 
   function handleDeleteProsperity(id: string) {
     setProsperityItems((items) => items.filter((item) => item.id !== id));
+    setFinance((current) => ({
+      ...current,
+      transactions: current.transactions.filter(
+        (transaction) => transaction.linkedProsperityId !== id,
+      ),
+    }));
   }
 
   function handleAddRate() {
@@ -1349,7 +1403,10 @@ export default function Home() {
   function applyCoreState(core: AppStateCore) {
     const repairedCore = {
       ...core,
-      finance: reconcileSavingsFundingTransactions(core.finance, core.savings),
+      finance: reconcileProsperityFundingTransactions(
+        reconcileSavingsFundingTransactions(core.finance, core.savings),
+        core.prosperity,
+      ),
     };
     lastCoreSignatureRef.current = JSON.stringify(repairedCore);
     setSavings(repairedCore.savings);
@@ -2002,10 +2059,12 @@ export default function Home() {
 
         {activeSavingsProduct === 'prosperity' ? (
           <ProsperityDashboard
+            accounts={vndAccounts}
             items={prosperityItems}
-            onAdd={handleAddProsperity}
             onDelete={handleDeleteProsperity}
             onHarvest={handleHarvestProsperity}
+            onOpenFinance={() => setActiveWorkspace("finance")}
+            onSave={handleSaveProsperity}
             today={today}
           />
         ) : (

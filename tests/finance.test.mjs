@@ -12,6 +12,7 @@ import {
   getFinanceTransactionsForMonth,
   normalizeFinanceState,
   parseFinanceAmountInput,
+  reconcileProsperityFundingTransactions,
   reconcileSavingsFundingTransactions,
   saveFinanceAccount,
   saveFinanceBudget,
@@ -553,6 +554,61 @@ test("linked savings movements update account balance without changing income or
     net: 0,
     transactionCount: 2,
   });
+});
+
+test("linked Phát lộc investment reduces its VND source balance without becoming an expense", () => {
+  const prosperityDeposit = transaction({
+    id: "prosperity-funding",
+    type: "prosperity-deposit",
+    amount: 25_000,
+    accountId: vndBank.id,
+    categoryId: undefined,
+    linkedProsperityId: "prosperity-101",
+  });
+  const state = normalizeFinanceState({
+    accounts: [vndBank],
+    categories: [],
+    budgets: [],
+    transactions: [prosperityDeposit],
+  });
+
+  assert.equal(state.transactions.length, 1);
+  assert.equal(state.transactions[0].linkedProsperityId, "prosperity-101");
+  assert.equal(calculateAccountBalance(vndBank, state.transactions), 75_000);
+  assert.deepEqual(summarizeFinanceMonth(state, "2026-07", "VND"), {
+    currency: "VND",
+    income: 0,
+    expense: 0,
+    net: 0,
+    transactionCount: 1,
+  });
+});
+
+test("repairs a missing Phát lộc funding transaction without creating duplicates", () => {
+  const state = {
+    accounts: [vndBank],
+    categories: [],
+    transactions: [],
+    budgets: [],
+    budgetPlans: [],
+  };
+  const sources = [{
+    id: "prosperity-202",
+    name: "Phát lộc 12 tuần 4 ngày",
+    amount: 25_000,
+    startDate: "2026-07-17",
+    fundingAccountId: vndBank.id,
+    status: "growing",
+  }];
+
+  const repaired = reconcileProsperityFundingTransactions(state, sources);
+  assert.equal(repaired.transactions.length, 1);
+  assert.equal(repaired.transactions[0].type, "prosperity-deposit");
+  assert.equal(repaired.transactions[0].linkedProsperityId, "prosperity-202");
+  assert.equal(calculateAccountBalance(vndBank, repaired.transactions), 75_000);
+
+  const repairedAgain = reconcileProsperityFundingTransactions(repaired, sources);
+  assert.equal(repairedAgain.transactions.length, 1);
 });
 
 test("repairs missing deposits for active reinvested savings without creating duplicates", () => {

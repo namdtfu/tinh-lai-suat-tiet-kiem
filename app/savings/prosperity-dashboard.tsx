@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
+import type { FinanceAccount } from '@/lib/finance';
 import {
   calculateProsperity,
   calculateProsperityValueOnDate,
@@ -21,6 +22,7 @@ const WEEK_PRESETS = [4, 8, 10, 12, 16];
 type ProsperityForm = {
   amount: string;
   annualInterestRate: string;
+  fundingAccountId: string;
   name: string;
   startDate: string;
   termDays: string;
@@ -31,6 +33,7 @@ function createForm(today: string): ProsperityForm {
   return {
     amount: '',
     annualInterestRate: '7.5',
+    fundingAccountId: '',
     name: '',
     startDate: today,
     termDays: '0',
@@ -39,19 +42,24 @@ function createForm(today: string): ProsperityForm {
 }
 
 export default function ProsperityDashboard({
+  accounts,
   items,
-  onAdd,
   onDelete,
   onHarvest,
+  onOpenFinance,
+  onSave,
   today,
 }: {
+  accounts: FinanceAccount[];
   items: ProsperityItem[];
-  onAdd: (item: ProsperityItem) => void;
   onDelete: (id: string) => void;
   onHarvest: (id: string) => void;
+  onOpenFinance: () => void;
+  onSave: (item: ProsperityItem) => void;
   today: string;
 }) {
   const [form, setForm] = useState<ProsperityForm>(() => createForm(today));
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
 
   const amount = parseAmount(form.amount);
@@ -135,30 +143,72 @@ export default function ProsperityDashboard({
       return;
     }
 
+    const existingItem = editingId
+      ? items.find((item) => item.id === editingId)
+      : undefined;
+    const fundingAccountId = accounts.some(
+      (account) => account.id === form.fundingAccountId,
+    )
+      ? form.fundingAccountId
+      : '';
     const item: ProsperityItem = {
-      id: `prosperity-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id:
+        existingItem?.id ??
+        `prosperity-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name:
         form.name.trim() ||
         `Phát lộc ${formatProsperityTerm(termWeeks, termDays)}`,
       amount,
       annualInterestRate,
+      ...(fundingAccountId
+        ? { fundingAccountId }
+        : {}),
       termDays,
       termWeeks,
       startDate: form.startDate,
       ...preview,
-      status: 'growing',
+      status: existingItem?.status ?? 'growing',
+      ...(existingItem?.harvestedAt
+        ? { harvestedAt: existingItem.harvestedAt }
+        : {}),
     };
-    onAdd(item);
+    onSave(item);
     setForm(createForm(today));
+    setEditingId(null);
     setMessage(
-      `Đã gieo ${formatCurrency(amount)} trong ${formatProsperityTerm(termWeeks, termDays)}.`,
+      existingItem
+        ? `Đã lưu thay đổi cho “${item.name}”.`
+        : `Đã gieo ${formatCurrency(amount)} trong ${formatProsperityTerm(termWeeks, termDays)}.`,
     );
+  }
+
+  function startEditing(item: ProsperityItem) {
+    setEditingId(item.id);
+    setForm({
+      amount: formatAmountInput(item.amount),
+      annualInterestRate: String(item.annualInterestRate),
+      fundingAccountId: item.fundingAccountId ?? '',
+      name: item.name,
+      startDate: item.startDate,
+      termDays: String(item.termDays),
+      termWeeks: String(item.termWeeks),
+    });
+    setMessage(`Đang chỉnh sửa “${item.name}”.`);
+    document
+      .getElementById('prosperity-form')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setForm(createForm(today));
+    setMessage('Đã hủy chỉnh sửa.');
   }
 
   function confirmDelete(item: ProsperityItem) {
     if (
       window.confirm(
-        `Xóa “${item.name}”? Thao tác này chỉ xóa khỏi sổ Phát lộc.`,
+        `Xóa “${item.name}”? Giao dịch đầu tư liên kết cũng sẽ bị xóa và số dư tài khoản nguồn được hoàn lại.`,
       )
     ) {
       onDelete(item.id);
@@ -203,8 +253,12 @@ export default function ProsperityDashboard({
 
       <section className='prosperity-create-card' aria-labelledby='prosperity-create-title'>
         <div className='prosperity-create-copy'>
-          <span className='prosperity-kicker'>GIEO MỘT KHOẢN MỚI</span>
-          <h2 id='prosperity-create-title'>Nhập tiền, chọn thời hạn</h2>
+          <span className='prosperity-kicker'>
+            {editingId ? 'CHỈNH SỬA KHOẢN PHÁT LỘC' : 'GIEO MỘT KHOẢN MỚI'}
+          </span>
+          <h2 id='prosperity-create-title'>
+            {editingId ? 'Cập nhật khoản đang có' : 'Nhập tiền, chọn thời hạn'}
+          </h2>
           <p>
             Không có chợ hay hạt giống ảo. Mỗi lần nhập là một khoản Phát lộc
             độc lập, có ngày thu hoạch và lợi nhuận dự kiến rõ ràng.
@@ -218,7 +272,7 @@ export default function ProsperityDashboard({
           </div>
         </div>
 
-        <form className='prosperity-form' onSubmit={handleSubmit}>
+        <form className='prosperity-form' id='prosperity-form' onSubmit={handleSubmit}>
           <label>
             Tên khoản <small>(không bắt buộc)</small>
             <input
@@ -243,6 +297,39 @@ export default function ProsperityDashboard({
               <span>₫</span>
             </span>
           </label>
+          <label>
+            Tài khoản nguồn <small>(không bắt buộc)</small>
+            <select
+              value={form.fundingAccountId}
+              onChange={(event) =>
+                updateForm('fundingAccountId', event.target.value)
+              }
+            >
+              <option value=''>Không liên kết tài khoản</option>
+              {form.fundingAccountId &&
+                !accounts.some((account) => account.id === form.fundingAccountId) && (
+                  <option value={form.fundingAccountId}>
+                    Tài khoản không còn tồn tại
+                  </option>
+                )}
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.icon} {account.name}
+                </option>
+              ))}
+            </select>
+            <small>
+              Chọn tài khoản ngân hàng, ví điện tử hoặc tiền mặt. Khi lưu, số dư
+              sẽ giảm đúng số tiền gieo.
+            </small>
+          </label>
+          <button
+            className='prosperity-manage-accounts'
+            type='button'
+            onClick={onOpenFinance}
+          >
+            {accounts.length ? 'Quản lý tài khoản nguồn' : 'Tạo tài khoản VND để liên kết'}
+          </button>
           <fieldset>
             <legend>Thời gian ươm</legend>
             <div className='week-presets'>
@@ -345,10 +432,21 @@ export default function ProsperityDashboard({
             )}
           </div>
           {message && <p className='prosperity-message' role='status'>{message}</p>}
-          <button className='prosperity-submit' type='submit'>
-            <span aria-hidden='true'>＋</span>
-            Tạo khoản Phát lộc
-          </button>
+          <div className='prosperity-form-actions'>
+            <button className='prosperity-submit' type='submit'>
+              <span aria-hidden='true'>{editingId ? '✓' : '＋'}</span>
+              {editingId ? 'Lưu thay đổi' : 'Tạo khoản Phát lộc'}
+            </button>
+            {editingId && (
+              <button
+                className='prosperity-cancel-edit'
+                type='button'
+                onClick={cancelEditing}
+              >
+                Hủy chỉnh sửa
+              </button>
+            )}
+          </div>
         </form>
       </section>
 
@@ -372,6 +470,9 @@ export default function ProsperityDashboard({
             {sortedItems.map((item) => {
               const progress = getProsperityProgress(item, today);
               const current = calculateProsperityValueOnDate(item, today);
+              const fundingAccount = accounts.find(
+                (account) => account.id === item.fundingAccountId,
+              );
               const harvested = item.status === 'harvested';
               return (
                 <article
@@ -439,6 +540,13 @@ export default function ProsperityDashboard({
                         Giá trị đến hôm nay: {formatCurrency(current.totalValue)}
                       </small>
                     )}
+                    <small className='prosperity-funding-source'>
+                      Nguồn tiền: {fundingAccount
+                        ? `${fundingAccount.icon} ${fundingAccount.name}`
+                        : item.fundingAccountId
+                          ? 'Tài khoản không còn tồn tại'
+                          : 'Không liên kết tài khoản'}
+                    </small>
                   </div>
                   <div className='prosperity-item-actions'>
                     {!harvested && progress.isReady && (
@@ -446,6 +554,13 @@ export default function ProsperityDashboard({
                         Thu hoạch khoản này
                       </button>
                     )}
+                    <button
+                      type='button'
+                      className='prosperity-edit'
+                      onClick={() => startEditing(item)}
+                    >
+                      Sửa
+                    </button>
                     <button
                       type='button'
                       className='prosperity-delete'
