@@ -111,6 +111,50 @@ export default function DepositForm({
                 />
               </div>
 
+              {mode !== "reinvest" && (
+                <div className="form-group form-group-wide">
+                  <label>Loại tích lũy</label>
+                  <div
+                    className="savings-term-type-toggle"
+                    role="group"
+                    aria-label="Chọn loại tích lũy"
+                  >
+                    <button
+                      type="button"
+                      className={form.termType === "fixed" ? "active" : ""}
+                      aria-pressed={form.termType === "fixed"}
+                      onClick={() =>
+                        onFormChange((current) => ({
+                          ...current,
+                          term: current.term || "6",
+                          termType: "fixed",
+                        }))
+                      }
+                    >
+                      Có kỳ hạn
+                      <small>Có ngày đáo hạn và có thể tái đầu tư</small>
+                    </button>
+                    <button
+                      type="button"
+                      className={form.termType === "open-ended" ? "active" : ""}
+                      aria-pressed={form.termType === "open-ended"}
+                      onClick={() =>
+                        onFormChange((current) => ({
+                          ...current,
+                          maturityInstruction: "return",
+                          term: "",
+                          termType: "open-ended",
+                        }))
+                      }
+                    >
+                      Không kỳ hạn
+                      <small>Rút bất cứ lúc nào, thuế 5% trên tiền lãi</small>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {form.termType === "fixed" && (
               <div className="form-group">
                 <label htmlFor="maturityInstruction">Khi đáo hạn</label>
                 <select
@@ -128,6 +172,7 @@ export default function DepositForm({
                   <option value="reinvest-all">Dự kiến tái đầu tư toàn bộ</option>
                 </select>
               </div>
+              )}
 
               <div className="form-group">
                 <label htmlFor="amount">Số tiền gửi (VNĐ)</label>
@@ -147,6 +192,7 @@ export default function DepositForm({
                 </div>
               </div>
 
+              {form.termType === "fixed" ? (
               <div className="form-group">
                 <label htmlFor="term">Kỳ hạn (tháng)</label>
                 <input
@@ -160,6 +206,13 @@ export default function DepositForm({
                   placeholder="6"
                 />
               </div>
+              ) : (
+                <div className="form-group open-ended-note">
+                  <span>Không có ngày đáo hạn</span>
+                  <strong>Lãi chạy liên tục đến ngày rút</strong>
+                  <small>Chỉ khấu trừ 5% trên phần lãi phát sinh.</small>
+                </div>
+              )}
 
               <div className="form-group">
                 <label htmlFor="interestRate">Lãi suất (%/năm)</label>
@@ -246,7 +299,11 @@ export default function DepositForm({
               </div>
 
               <div className="form-group form-group-wide">
-                <label htmlFor="settlementAccountId">Tài khoản nhận tiền đáo hạn</label>
+                <label htmlFor="settlementAccountId">
+                  {form.termType === "open-ended"
+                    ? "Tài khoản nhận tiền khi rút"
+                    : "Tài khoản nhận tiền đáo hạn"}
+                </label>
                 <select
                   id="settlementAccountId"
                   value={form.settlementAccountId}

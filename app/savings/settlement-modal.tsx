@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { FinanceAccount } from "@/lib/finance";
 import {
+  calculateAccruedInterest,
   formatAmountInput,
   formatCurrency,
   formatDate,
@@ -37,9 +38,17 @@ export default function SettlementModal({
 }) {
   if (!item) return null;
 
+  const isOpenEnded = item.termType === "open-ended";
+  const projected = isOpenEnded
+    ? calculateAccruedInterest(item, draft.date || item.startDate)
+    : {
+        tax: item.tax,
+        totalAmount: item.totalAmount,
+      };
   const actualAmount = parseAmount(draft.amount);
   const actualInterest = Math.max(0, actualAmount - item.amount);
-  const isEarlySettlement = draft.date < item.maturityDate;
+  const isEarlySettlement =
+    !isOpenEnded && draft.date < item.maturityDate;
 
   return (
     <div
@@ -59,14 +68,20 @@ export default function SettlementModal({
         <div className="settlement-heading">
           <div>
             <span>GHI NHẬN THỰC TẾ</span>
-            <h3 id="settlement-title">Tất toán “{item.name}”</h3>
+            <h3 id="settlement-title">
+              {isOpenEnded ? "Rút tiền" : "Tất toán"} “{item.name}”
+            </h3>
           </div>
           <button type="button" onClick={onClose} aria-label="Đóng">×</button>
         </div>
         <div className="settlement-projection">
-          <span>Dự kiến nhận</span>
-          <strong>{formatCurrency(item.totalAmount)}</strong>
-          <small>Đáo hạn {formatDate(item.maturityDate)}</small>
+          <span>Dự kiến nhận sau thuế</span>
+          <strong>{formatCurrency(projected.totalAmount)}</strong>
+          <small>
+            {isOpenEnded
+              ? `Tính đến ${formatDate(draft.date || item.startDate)} · thuế lãi 5% ${formatCurrency(projected.tax)}`
+              : `Đáo hạn ${formatDate(item.maturityDate)}`}
+          </small>
         </div>
         {isEarlySettlement && (
           <p className="settlement-warning">
@@ -95,17 +110,27 @@ export default function SettlementModal({
             </div>
           </label>
           <label>
-            Ngày tất toán
+            {isOpenEnded ? "Ngày rút" : "Ngày tất toán"}
             <input
               type="date"
               required
               value={draft.date}
-              onChange={(event) =>
+              onChange={(event) => {
+                const date = event.target.value;
                 onDraftChange((current) => ({
                   ...current,
-                  date: event.target.value,
-                }))
-              }
+                  date,
+                  ...(isOpenEnded && date
+                    ? {
+                        amount: formatAmountInput(
+                          Math.round(
+                            calculateAccruedInterest(item, date).totalAmount,
+                          ),
+                        ),
+                      }
+                    : {}),
+                }));
+              }}
             />
           </label>
           <label className="settlement-account-field">
@@ -130,11 +155,13 @@ export default function SettlementModal({
         </div>
         <div className="settlement-actual-summary">
           <span>Gốc {formatCurrency(item.amount)}</span>
-          <strong>Lãi thực nhận +{formatCurrency(actualInterest)}</strong>
+          <strong>Lãi ròng thực nhận +{formatCurrency(actualInterest)}</strong>
         </div>
         <div className="settlement-actions">
           <button type="button" className="btn-cancel" onClick={onClose}>Hủy</button>
-          <button type="submit" className="btn-primary">Xác nhận tất toán</button>
+          <button type="submit" className="btn-primary">
+            {isOpenEnded ? "Xác nhận rút tiền" : "Xác nhận tất toán"}
+          </button>
         </div>
       </form>
     </div>

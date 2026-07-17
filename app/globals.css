@@ -647,6 +647,75 @@ button {
   box-shadow: 0 0 0 3px rgba(111, 75, 216, 0.12);
 }
 
+.savings-term-type-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.savings-term-type-toggle button {
+  display: grid;
+  gap: 4px;
+  min-height: 68px;
+  padding: 12px 14px;
+  color: #534b5d;
+  background: #fff;
+  border: 1px solid #dcd6e3;
+  border-radius: 11px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.savings-term-type-toggle button small {
+  color: #8d8495;
+  font-size: 0.67rem;
+  font-weight: 500;
+}
+
+.savings-term-type-toggle button.active {
+  color: var(--violet);
+  background: var(--violet-pale);
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px rgba(111, 75, 216, 0.08);
+}
+
+.open-ended-note {
+  display: grid;
+  align-content: center;
+  min-height: 76px;
+  padding: 12px 14px;
+  background: #f1ecff;
+  border: 1px solid #dcd1f8;
+  border-radius: 11px;
+}
+
+.open-ended-note span,
+.open-ended-note strong,
+.open-ended-note small {
+  display: block;
+}
+
+.open-ended-note span {
+  color: var(--violet);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.open-ended-note strong {
+  margin-top: 3px;
+  color: #40355a;
+  font-size: 0.82rem;
+}
+
+.open-ended-note small {
+  margin-top: 3px;
+  color: #7d728d;
+  font-size: 0.67rem;
+}
+
 .input-with-suffix {
   position: relative;
 }
@@ -3082,6 +3151,10 @@ footer {
   .today-interest-card {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .savings-term-type-toggle {
+    grid-template-columns: 1fr;
   }
 
   .savings-trend-card {

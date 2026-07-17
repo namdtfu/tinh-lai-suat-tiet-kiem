@@ -5,6 +5,7 @@ export type SavingsTrendCycle = {
   interestRate: number;
   startDate: string;
   maturityDate: string;
+  termType?: "fixed" | "open-ended";
 };
 
 export type SavingsTrendItem = SavingsTrendCycle & {
@@ -36,7 +37,9 @@ function toIsoDate(date: Date) {
 
 function getCycleSnapshot(cycle: SavingsTrendCycle, date: string) {
   const calculationDate =
-    date < cycle.maturityDate ? date : cycle.maturityDate;
+    cycle.termType === "open-ended" || date < cycle.maturityDate
+      ? date
+      : cycle.maturityDate;
   const elapsedDays = daysBetween(cycle.startDate, calculationDate);
   const grossInterest = Math.floor(
     cycle.amount * (cycle.interestRate / 100) * (elapsedDays / 365),
@@ -56,9 +59,13 @@ export function getSavingsTrendSnapshot(
 ) {
   return savings.reduce(
     (total, item) => {
+      const exitDate =
+        item.settledAt ||
+        (item.termType === "open-ended" ? undefined : item.maturityDate);
       if (
         item.status === "settled" &&
-        date >= (item.settledAt || item.maturityDate)
+        exitDate &&
+        date >= exitDate
       ) {
         return total;
       }

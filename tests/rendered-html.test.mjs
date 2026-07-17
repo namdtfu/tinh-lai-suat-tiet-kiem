@@ -216,8 +216,8 @@ test("includes a versioned local backup and restore flow", async () => {
     ])
   ).join("\n");
 
-  assert.match(page, /const BACKUP_FORMAT_VERSION = 7/);
-  assert.match(page, /\[1, 2, 3, 4, 5, 6, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
+  assert.match(page, /const BACKUP_FORMAT_VERSION = 8/);
+  assert.match(page, /\[1, 2, 3, 4, 5, 6, 7, BACKUP_FORMAT_VERSION\]\.includes\(version\)/);
   assert.match(page, /prosperity: ProsperityItem\[\]/);
   assert.match(page, /function parseBackupPayload\(/);
   assert.match(page, /cashLedger: CashLedgerEntry\[\]/);
@@ -322,6 +322,8 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
     await Promise.all([
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../lib/savings.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/deposit-form.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/savings-list.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/savings/settlement-modal.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/savings/action-center.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/savings/savings-trend-chart.tsx", import.meta.url), "utf8"),
@@ -342,6 +344,10 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
   assert.match(page, /Tăng trưởng tiền tiết kiệm/);
   assert.match(page, /className="savings-trend-svg"/);
   assert.match(page, /setSelectedMonth/);
+  assert.match(page, /type SavingsTermType = "fixed" \| "open-ended"/);
+  assert.match(page, /Không kỳ hạn/);
+  assert.match(page, /Rút bất cứ lúc nào, thuế 5% trên tiền lãi/);
+  assert.match(page, /item\.termType === "open-ended"/);
 });
 
 test("includes editable Phát lộc with an optional VND funding account", async () => {
@@ -349,6 +355,7 @@ test("includes editable Phát lộc with an optional VND funding account", async
     await Promise.all([
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/savings/prosperity-dashboard.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../lib/prosperity.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/finance.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/app-state.ts", import.meta.url), "utf8"),
     ])
@@ -361,6 +368,10 @@ test("includes editable Phát lộc with an optional VND funding account", async
   assert.match(source, /Lưu thay đổi/);
   assert.match(source, /transaction\.linkedProsperityId !== id/);
   assert.match(source, /reconcileProsperityFundingTransactions/);
+  assert.match(source, /projectedTax/);
+  assert.match(source, /INTEREST_DEDUCTION_RATE/);
+  assert.match(source, /Thuế lợi nhuận \(5%\)/);
+  assert.match(source, /Lợi nhuận ròng dự kiến/);
 });
 
 test("includes invite-only realtime cloud accounts with per-user database isolation", async () => {

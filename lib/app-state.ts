@@ -28,7 +28,7 @@ import {
   toLocalIso,
 } from "./savings.ts";
 export const BACKUP_APP_ID = "tinh-lai-suat-tiet-kiem";
-export const BACKUP_FORMAT_VERSION = 7;
+export const BACKUP_FORMAT_VERSION = 8;
 export const MAX_BACKUP_SIZE = 5_000_000;
 export const SAFETY_SNAPSHOT_LIMIT = 7;
 const DEFAULT_INTEREST_RATES = [9, 8.5, 8, 7.5, 7, 6.5, 6];
@@ -137,6 +137,7 @@ function normalizeBackupCycle(value: unknown): SavingsCycle | null {
   const amount = Number(value.amount);
   const interestRate = Number(value.interestRate);
   const term = Number(value.term);
+  const termType = value.termType === "open-ended" ? "open-ended" : "fixed";
   const startDate = value.startDate;
   const reinvestedAmount =
     value.reinvestedAmount === undefined
@@ -158,7 +159,7 @@ function normalizeBackupCycle(value: unknown): SavingsCycle | null {
     interestRate <= 0 ||
     interestRate > 100 ||
     !Number.isInteger(term) ||
-    term < 1 ||
+    (termType === "fixed" ? term < 1 : term !== 0) ||
     !isValidIsoDate(startDate) ||
     [reinvestedAmount, cashRemainder, additionalContribution].some(
       (amountValue) =>
@@ -173,8 +174,9 @@ function normalizeBackupCycle(value: unknown): SavingsCycle | null {
     amount,
     interestRate,
     term,
+    termType,
     startDate,
-    ...calculateSavings(amount, interestRate, term, startDate),
+    ...calculateSavings(amount, interestRate, term, startDate, termType),
     ...(reinvestedAmount === undefined ? {} : { reinvestedAmount }),
     ...(cashRemainder === undefined ? {} : { cashRemainder }),
     ...(additionalContribution === undefined
@@ -457,7 +459,7 @@ export function parseBackupPayload(value: unknown): BackupPayload | null {
   if (
     !isRecord(value) ||
     value.app !== BACKUP_APP_ID ||
-    ![1, 2, 3, 4, 5, 6, BACKUP_FORMAT_VERSION].includes(version) ||
+    ![1, 2, 3, 4, 5, 6, 7, BACKUP_FORMAT_VERSION].includes(version) ||
     typeof value.exportedAt !== "string" ||
     !Array.isArray(value.savings) ||
     !Array.isArray(value.interestRates) ||

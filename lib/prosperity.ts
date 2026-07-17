@@ -2,6 +2,7 @@ import {
   addDays,
   daysBetween,
   getTodayIso,
+  INTEREST_DEDUCTION_RATE,
   parseLocalDate,
   signedDaysBetween,
   toLocalIso,
@@ -19,7 +20,9 @@ export type ProsperityItem = {
   termWeeks: number;
   startDate: string;
   harvestDate: string;
+  projectedGrossProfit: number;
   projectedProfit: number;
+  projectedTax: number;
   projectedTotal: number;
   status: ProsperityStatus;
   harvestedAt?: string;
@@ -28,7 +31,9 @@ export type ProsperityItem = {
 export type ProsperityCalculation = {
   days: number;
   harvestDate: string;
+  projectedGrossProfit: number;
   projectedProfit: number;
+  projectedTax: number;
   projectedTotal: number;
 };
 
@@ -41,13 +46,17 @@ export function calculateProsperity(
 ): ProsperityCalculation {
   const days = termWeeks * 7 + termDays;
   const harvestDate = addDays(startDate, days);
-  const projectedProfit =
+  const projectedGrossProfit =
     amount * (annualInterestRate / 100) * (days / 365);
+  const projectedTax = projectedGrossProfit * INTEREST_DEDUCTION_RATE;
+  const projectedProfit = projectedGrossProfit - projectedTax;
 
   return {
     days,
     harvestDate,
+    projectedGrossProfit,
     projectedProfit,
+    projectedTax,
     projectedTotal: amount + projectedProfit,
   };
 }
@@ -63,11 +72,15 @@ export function calculateProsperityValueOnDate(
         ? date
         : item.harvestDate;
   const elapsedDays = daysBetween(item.startDate, calculationDate);
-  const accruedProfit =
+  const accruedGrossProfit =
     item.amount * (item.annualInterestRate / 100) * (elapsedDays / 365);
+  const accruedTax = accruedGrossProfit * INTEREST_DEDUCTION_RATE;
+  const accruedProfit = accruedGrossProfit - accruedTax;
 
   return {
+    accruedGrossProfit,
     accruedProfit,
+    accruedTax,
     calculationDate,
     elapsedDays,
     totalValue: item.amount + accruedProfit,
@@ -176,7 +189,9 @@ export function normalizeProsperityItem(
     termWeeks,
     startDate: item.startDate,
     harvestDate: '',
+    projectedGrossProfit: 0,
     projectedProfit: 0,
+    projectedTax: 0,
     projectedTotal: amount,
     status,
     ...(harvestedAt ? { harvestedAt } : {}),

@@ -705,6 +705,28 @@ test("settled savings leave the trend from the settlement date", () => {
   );
 });
 
+test("open-ended savings trend keeps accruing without a maturity date", () => {
+  const savings = [{
+    amount: 10_000_000,
+    interestRate: 6,
+    startDate: "2026-07-01",
+    maturityDate: "",
+    termType: "open-ended",
+    status: "active",
+    history: [],
+  }];
+
+  const july = getSavingsTrendSnapshot(savings, "2026-07-31");
+  const nextJuly = getSavingsTrendSnapshot(savings, "2027-07-01");
+
+  assert.equal(july.activeCount, 1);
+  assert.equal(july.principal, 10_000_000);
+  assert.equal(Math.round(july.interest), 46_849);
+  assert.equal(nextJuly.activeCount, 1);
+  assert.equal(nextJuly.principal, 10_000_000);
+  assert.equal(nextJuly.interest, 570_000);
+});
+
 
 test("net worth converts KRW accounts and combines liquid cash with savings", () => {
   const finance = {

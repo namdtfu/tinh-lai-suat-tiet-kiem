@@ -114,9 +114,15 @@ export default function ProsperityDashboard({
         totals.principal += item.amount;
         totals.accruedProfit += current.accruedProfit;
         totals.projectedProfit += item.projectedProfit;
+        totals.projectedTax += item.projectedTax;
         return totals;
       },
-      { accruedProfit: 0, principal: 0, projectedProfit: 0 },
+      {
+        accruedProfit: 0,
+        principal: 0,
+        projectedProfit: 0,
+        projectedTax: 0,
+      },
     );
   }, [activeItems, today]);
 
@@ -231,16 +237,17 @@ export default function ProsperityDashboard({
             <strong>{formatCurrency(summary.principal)}</strong>
           </div>
           <div>
-            <span>Lãi đến hôm nay</span>
+            <span>Lãi ròng đến hôm nay</span>
             <strong className='prosperity-positive'>
               +{formatCurrency(summary.accruedProfit)}
             </strong>
           </div>
           <div>
-            <span>Lợi nhuận dự kiến</span>
+            <span>Lợi nhuận ròng dự kiến</span>
             <strong className='prosperity-positive'>
               +{formatCurrency(summary.projectedProfit)}
             </strong>
+            <small>Thuế 5%: −{formatCurrency(summary.projectedTax)}</small>
           </div>
           <div>
             <span>Giá trị khi thu hoạch</span>
@@ -266,9 +273,9 @@ export default function ProsperityDashboard({
           <div className='prosperity-formula'>
             <span>Cách tính</span>
             <strong>
-              Gốc × lãi suất năm × ((số tuần × 7) + số ngày) / 365
+              Gốc × lãi suất năm × số ngày / 365 × 95%
             </strong>
-            <small>Lãi đơn dự kiến, chưa trừ phí hoặc thuế nếu có.</small>
+            <small>Lợi nhuận được khấu trừ 5% thuế khi thu hoạch.</small>
           </div>
         </div>
 
@@ -417,13 +424,23 @@ export default function ProsperityDashboard({
                   <strong>{formatDate(preview.harvestDate)}</strong>
                 </div>
                 <div>
-                  <span>Lợi nhuận dự kiến</span>
+                  <span>Lợi nhuận trước thuế</span>
+                  <strong>
+                    +{formatCurrency(preview.projectedGrossProfit)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Thuế lợi nhuận (5%)</span>
+                  <strong>−{formatCurrency(preview.projectedTax)}</strong>
+                </div>
+                <div>
+                  <span>Lợi nhuận ròng</span>
                   <strong className='prosperity-positive'>
                     +{formatCurrency(preview.projectedProfit)}
                   </strong>
                 </div>
                 <div>
-                  <span>Tổng nhận dự kiến</span>
+                  <span>Tổng nhận sau thuế</span>
                   <strong>{formatCurrency(preview.projectedTotal)}</strong>
                 </div>
               </>
@@ -501,13 +518,23 @@ export default function ProsperityDashboard({
                       <strong>{formatCurrency(item.amount)}</strong>
                     </div>
                     <div>
-                      <span>Lãi dự kiến</span>
+                      <span>Lãi trước thuế</span>
+                      <strong>
+                        +{formatCurrency(item.projectedGrossProfit)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Thuế lợi nhuận (5%)</span>
+                      <strong>−{formatCurrency(item.projectedTax)}</strong>
+                    </div>
+                    <div>
+                      <span>Lãi ròng</span>
                       <strong className='prosperity-positive'>
                         +{formatCurrency(item.projectedProfit)}
                       </strong>
                     </div>
                     <div>
-                      <span>Thu hoạch dự kiến</span>
+                      <span>Thu hoạch sau thuế</span>
                       <strong>{formatCurrency(item.projectedTotal)}</strong>
                     </div>
                   </div>
@@ -537,7 +564,8 @@ export default function ProsperityDashboard({
                     </div>
                     {!harvested && (
                       <small>
-                        Giá trị đến hôm nay: {formatCurrency(current.totalValue)}
+                        Giá trị ròng đến hôm nay: {formatCurrency(current.totalValue)}
+                        {' · '}thuế tạm tính {formatCurrency(current.accruedTax)}
                       </small>
                     )}
                     <small className='prosperity-funding-source'>

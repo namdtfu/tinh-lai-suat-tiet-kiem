@@ -1,14 +1,16 @@
-const INTEREST_DEDUCTION_RATE = 0.05;
+export const INTEREST_DEDUCTION_RATE = 0.05;
 const AVERAGE_DAYS_PER_MONTH = 365 / 12;
 const MAX_GOAL_MONTHS = 1_200;
 
 export type SavingsStatus = "active" | "settled";
 export type MaturityInstruction = "decide-later" | "return" | "reinvest-all";
+export type SavingsTermType = "fixed" | "open-ended";
 
 export type SavingsCycle = {
   amount: number;
   interestRate: number;
   term: number;
+  termType?: SavingsTermType;
   startDate: string;
   maturityDate: string;
   interest: number;
@@ -39,6 +41,7 @@ export type SavingsForm = {
   interestRate: string;
   customInterestRate: string;
   term: string;
+  termType: SavingsTermType;
   startDate: string;
   bankName: string;
   fundingAccountId: string;
@@ -81,6 +84,7 @@ export function createEmptySavingsForm(startDate = ""): SavingsForm {
     interestRate: "",
     customInterestRate: "",
     term: "",
+    termType: "fixed",
     startDate,
     bankName: "",
     fundingAccountId: "",
@@ -185,7 +189,17 @@ export function calculateSavings(
   interestRate: number,
   term: number,
   startDate: string,
+  termType: SavingsTermType = "fixed",
 ) {
+  if (termType === "open-ended") {
+    return {
+      maturityDate: "",
+      interest: 0,
+      tax: 0,
+      interestAfterTax: 0,
+      totalAmount: amount,
+    };
+  }
   const maturityDate = addMonthsClamped(startDate, term);
   const days = daysBetween(startDate, maturityDate);
   const dailyRate = interestRate / 100 / 365;
@@ -206,10 +220,13 @@ export function calculateAccruedInterest(
   cycle: SavingsCycle,
   date: string,
 ) {
+  const isOpenEnded = cycle.termType === "open-ended";
   const calculationDate =
     date <= cycle.startDate
       ? cycle.startDate
-      : date < cycle.maturityDate
+      : isOpenEnded
+        ? date
+        : date < cycle.maturityDate
         ? date
         : cycle.maturityDate;
   const elapsedDays = daysBetween(cycle.startDate, calculationDate);
@@ -340,6 +357,7 @@ export function buildCashflowSchedule(
   const monthMap = new Map(schedule.map((month) => [month.key, month]));
 
   savings.forEach((item) => {
+    if (item.termType === "open-ended") return;
     if (item.maturityDate < today) return;
     const month = monthMap.get(getMonthKey(item.maturityDate));
     if (!month) return;
@@ -356,8 +374,11 @@ export function buildCashflowSchedule(
 }
 
 export function recalculateSavingsItem(item: SavingsItem): SavingsItem {
+  const termType: SavingsTermType =
+    item.termType === "open-ended" ? "open-ended" : "fixed";
   return {
     ...item,
+    termType,
     status: item.status === "settled" ? "settled" : "active",
     maturityInstruction:
       item.maturityInstruction === "return" ||
@@ -369,14 +390,17 @@ export function recalculateSavingsItem(item: SavingsItem): SavingsItem {
       item.interestRate,
       item.term,
       item.startDate,
+      termType,
     ),
     history: (item.history ?? []).map((cycle) => ({
       ...cycle,
+      termType: cycle.termType === "open-ended" ? "open-ended" : "fixed",
       ...calculateSavings(
         cycle.amount,
         cycle.interestRate,
         cycle.term,
         cycle.startDate,
+        cycle.termType === "open-ended" ? "open-ended" : "fixed",
       ),
     })),
   };
@@ -458,6 +482,7 @@ export function toSavingsCycle(
     amount: item.amount,
     interestRate: item.interestRate,
     term: item.term,
+    termType: item.termType === "open-ended" ? "open-ended" : "fixed",
     startDate: item.startDate,
     maturityDate: item.maturityDate,
     interest: item.interest,

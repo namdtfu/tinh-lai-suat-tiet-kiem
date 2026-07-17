@@ -59,6 +59,23 @@ test("rejects invalid realtime timestamps", () => {
 
 test("full backup payload preserves every application data section", () => {
   const core = createCore();
+  core.savings.push({
+    id: 1,
+    name: "Tích lũy linh hoạt",
+    amount: 10_000_000,
+    interestRate: 6,
+    term: 0,
+    termType: "open-ended",
+    startDate: "2026-07-01",
+    maturityDate: "",
+    interest: 0,
+    tax: 0,
+    interestAfterTax: 0,
+    totalAmount: 10_000_000,
+    history: [],
+    maturityInstruction: "return",
+    status: "active",
+  });
   core.finance.accounts[0].openingBalance = 1_000_000;
   const payload = createBackupPayload(
     core,
@@ -69,7 +86,9 @@ test("full backup payload preserves every application data section", () => {
 
   assert.ok(parsed);
   assert.equal(parsed.exportedAt, "2026-07-17T08:00:00.000Z");
-  assert.deepEqual(parsed.savings, []);
+  assert.equal(parsed.savings.length, 1);
+  assert.equal(parsed.savings[0].termType, "open-ended");
+  assert.equal(parsed.savings[0].maturityDate, "");
   assert.deepEqual(parsed.prosperity, []);
   assert.deepEqual(parsed.cashLedger, []);
   assert.equal(parsed.finance.accounts[0].openingBalance, 1_000_000);

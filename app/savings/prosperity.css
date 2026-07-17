@@ -171,6 +171,12 @@
 .prosperity-summary-grid > div:last-child { border-right: 0; }
 .prosperity-summary-grid span,
 .prosperity-summary-grid strong { display: block; }
+.prosperity-summary-grid small {
+  display: block;
+  margin-top: 4px;
+  color: #a8e7c5;
+  font-size: 0.58rem;
+}
 .prosperity-summary-grid span {
   margin-bottom: 7px;
   color: #bae8cd;
@@ -305,7 +311,7 @@
 }
 .prosperity-preview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   margin-top: 18px;
   overflow: hidden;
@@ -414,7 +420,7 @@
 .prosperity-rate { margin-left: auto; color: var(--prosperity-dark); font-size: 0.76rem; }
 .prosperity-item-values {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-top: 18px;
   padding: 14px 0;

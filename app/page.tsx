@@ -913,6 +913,7 @@ export default function Home() {
     const nextSevenDays: SavingsItem[] = [];
     const nextThirtyDays: SavingsItem[] = [];
     activeSavings.forEach((item) => {
+      if (item.termType === "open-ended") return;
       const difference = signedDaysBetween(today, item.maturityDate);
       if (difference < 0) overdue.push(item);
       else if (difference <= 7) nextSevenDays.push(item);
@@ -1011,17 +1012,21 @@ export default function Home() {
     const interestRate = Number(
       form.customInterestRate || form.interestRate,
     );
-    const term = Number(form.term);
+    const isOpenEnded = form.termType === "open-ended";
+    const term = isOpenEnded ? 0 : Number(form.term);
 
     if (
       !amount ||
       !interestRate ||
       interestRate <= 0 ||
-      !Number.isInteger(term) ||
-      term < 1 ||
+      (!isOpenEnded && (!Number.isInteger(term) || term < 1)) ||
       !form.startDate
     ) {
-      setMessage("Vui lòng kiểm tra lại số tiền, lãi suất, kỳ hạn và ngày gửi.");
+      setMessage(
+        isOpenEnded
+          ? "Vui lòng kiểm tra lại số tiền, lãi suất và ngày gửi."
+          : "Vui lòng kiểm tra lại số tiền, lãi suất, kỳ hạn và ngày gửi.",
+      );
       return;
     }
 
@@ -1030,6 +1035,7 @@ export default function Home() {
       interestRate,
       term,
       form.startDate,
+      form.termType,
     );
     const sourceItem =
       editingId === null
@@ -1057,6 +1063,7 @@ export default function Home() {
       amount,
       interestRate,
       term,
+      termType: form.termType,
       startDate: form.startDate,
       ...calculation,
       history:
@@ -1066,7 +1073,7 @@ export default function Home() {
       bankName: form.bankName.trim().slice(0, 120) || undefined,
       fundingAccountId: form.fundingAccountId || undefined,
       settlementAccountId: form.settlementAccountId || undefined,
-      maturityInstruction: form.maturityInstruction,
+      maturityInstruction: isOpenEnded ? "return" : form.maturityInstruction,
       status: "active",
     };
 
@@ -1195,10 +1202,14 @@ export default function Home() {
   }
 
   function openSettlement(item: SavingsItem) {
+    const expectedAmount =
+      item.termType === "open-ended"
+        ? calculateAccruedInterest(item, today).totalAmount
+        : item.totalAmount;
     setSettlingId(item.id);
     setSettlementDraft({
       accountId: item.settlementAccountId ?? "",
-      amount: formatAmountInput(Math.round(item.totalAmount)),
+      amount: formatAmountInput(Math.round(expectedAmount)),
       date: today,
     });
   }
@@ -1250,7 +1261,7 @@ export default function Home() {
             amount: actualAmount,
             date: settlementDraft.date,
             id: settlementTransactionId,
-            note: `Tất toán ${item.name}${item.bankName ? ` · ${item.bankName}` : ""}`,
+            note: `${item.termType === "open-ended" ? "Rút" : "Tất toán"} ${item.name}${item.bankName ? ` · ${item.bankName}` : ""}`,
             savingsId: item.id,
             type: "savings-settlement",
             createdAt: existing?.createdAt,
@@ -1261,7 +1272,7 @@ export default function Home() {
     });
 
     setMessage(
-      `Đã tất toán “${item.name}” với số tiền thực nhận ${formatCurrency(actualAmount)}.`,
+      `Đã ${item.termType === "open-ended" ? "rút" : "tất toán"} “${item.name}” với số tiền thực nhận ${formatCurrency(actualAmount)}.`,
     );
     closeSettlement();
   }
@@ -1437,7 +1448,8 @@ export default function Home() {
       ),
       interestRate: isPreset ? String(item.interestRate) : "",
       customInterestRate: isPreset ? "" : String(item.interestRate),
-      term: String(item.term),
+      term: item.termType === "open-ended" ? "" : String(item.term),
+      termType: item.termType === "open-ended" ? "open-ended" : "fixed",
       startDate:
         nextMode === "reinvest" ? item.maturityDate : item.startDate,
       bankName: item.bankName ?? "",

@@ -156,15 +156,23 @@ export default function SavingsList({
                           const history = item.history ?? [];
                           const cycles: SavingsCycle[] = [...history, item];
                           const isSettled = item.status === "settled";
+                          const isOpenEnded =
+                            item.termType === "open-ended";
                           const isHistoryExpanded =
                             expandedHistoryId === item.id;
-                          const progress = getTermProgress(
-                            item.startDate,
-                            item.maturityDate,
-                          );
+                          const progress = isOpenEnded
+                            ? null
+                            : getTermProgress(
+                                item.startDate,
+                                item.maturityDate,
+                              );
+                          const valuationDate =
+                            isSettled && item.settledAt
+                              ? item.settledAt
+                              : today;
                           const accruedInterest = calculateAccruedInterest(
                             item,
-                            today,
+                            valuationDate,
                           );
                           const todayInterest = calculateInterestToday(
                             item,
@@ -200,10 +208,14 @@ export default function SavingsList({
                                   }
                                 />
                                 <div className="item-status-line">
-                                  <span className={isSettled ? "status-badge settled" : item.maturityDate <= today ? "status-badge matured" : "status-badge active"}>
+                                  <span className={isSettled ? "status-badge settled" : !isOpenEnded && item.maturityDate <= today ? "status-badge matured" : "status-badge active"}>
                                     {isSettled
-                                      ? "Đã tất toán"
-                                      : item.maturityDate <= today
+                                      ? isOpenEnded
+                                        ? "Đã rút"
+                                        : "Đã tất toán"
+                                      : isOpenEnded
+                                        ? "Không kỳ hạn"
+                                        : item.maturityDate <= today
                                         ? "Đã đáo hạn"
                                         : "Đang gửi"}
                                   </span>
@@ -222,8 +234,9 @@ export default function SavingsList({
                                       className="btn-settle"
                                       onClick={() => onOpenSettlement(item)}
                                     >
-                                      ✓ Tất toán
+                                      {isOpenEnded ? "↓ Rút tiền" : "✓ Tất toán"}
                                     </button>
+                                    {!isOpenEnded && (
                                     <button
                                       type="button"
                                       className="btn-reinvest"
@@ -231,6 +244,7 @@ export default function SavingsList({
                                     >
                                       ↻ Tái đầu tư
                                     </button>
+                                    )}
                                     <button
                                       type="button"
                                       className="btn-edit"
@@ -252,14 +266,18 @@ export default function SavingsList({
                             {isSettled ? (
                               <div className="settled-result-strip">
                                 <div>
-                                  <span>THỰC NHẬN KHI TẤT TOÁN</span>
+                                  <span>
+                                    {isOpenEnded
+                                      ? "THỰC NHẬN KHI RÚT"
+                                      : "THỰC NHẬN KHI TẤT TOÁN"}
+                                  </span>
                                   <strong>{formatCurrency(item.actualSettlementAmount ?? item.totalAmount)}</strong>
                                   <small>
                                     {item.settledAt ? `Ngày ${formatDate(item.settledAt)}` : "Đã ghi nhận tất toán"}
                                   </small>
                                 </div>
                                 <div>
-                                  <span>Lãi thực nhận</span>
+                                  <span>Lãi ròng thực nhận</span>
                                   <strong>
                                     +{formatCurrency(Math.max(0, (item.actualSettlementAmount ?? item.totalAmount) - item.amount))}
                                   </strong>
@@ -269,7 +287,11 @@ export default function SavingsList({
                             ) : (
                             <div className="accrued-interest-strip">
                               <div className="accrued-interest-main">
-                                <span>LÃI RÒNG KỲ HIỆN TẠI ĐẾN HÔM NAY</span>
+                                <span>
+                                  {isOpenEnded
+                                    ? "LÃI RÒNG KHÔNG KỲ HẠN ĐẾN HÔM NAY"
+                                    : "LÃI RÒNG KỲ HIỆN TẠI ĐẾN HÔM NAY"}
+                                </span>
                                 <strong>
                                   +
                                   {formatCurrency(
@@ -282,9 +304,11 @@ export default function SavingsList({
                               </div>
                               <div className="accrued-interest-breakdown">
                                 <span className="today-item-interest">
-                                  <small>Lãi riêng hôm nay</small>
+                                  <small>Lãi ròng hôm nay</small>
                                   <strong>
-                                    +{formatCurrency(todayInterest.interest)}
+                                    +{formatCurrency(
+                                      todayInterest.interestAfterTax,
+                                    )}
                                   </strong>
                                 </span>
                                 <span>
@@ -311,33 +335,63 @@ export default function SavingsList({
                             <div className="savings-details">
                               <div className="detail-item">
                                 <span>Kỳ hạn</span>
-                                <strong>{item.term} tháng</strong>
+                                <strong>
+                                  {isOpenEnded
+                                    ? "Không kỳ hạn"
+                                    : `${item.term} tháng`}
+                                </strong>
                               </div>
                               <div className="detail-item">
                                 <span>Ngày gửi</span>
                                 <strong>{formatDate(item.startDate)}</strong>
                               </div>
                               <div className="detail-item">
-                                <span>Ngày đáo hạn</span>
-                                <strong>{formatDate(item.maturityDate)}</strong>
+                                <span>
+                                  {isOpenEnded ? "Thời điểm rút" : "Ngày đáo hạn"}
+                                </span>
+                                <strong>
+                                  {isOpenEnded
+                                    ? "Bất cứ lúc nào"
+                                    : formatDate(item.maturityDate)}
+                                </strong>
                               </div>
                               <div className="detail-item">
                                 <span>Lãi trước khấu trừ</span>
-                                <strong>{formatCurrency(item.interest)}</strong>
+                                <strong>
+                                  {formatCurrency(
+                                    isOpenEnded
+                                      ? accruedInterest.interest
+                                      : item.interest,
+                                  )}
+                                </strong>
                               </div>
                               <div className="detail-item tax-detail">
                                 <span>Khấu trừ (5%)</span>
-                                <strong>−{formatCurrency(item.tax)}</strong>
+                                <strong>
+                                  −{formatCurrency(
+                                    isOpenEnded ? accruedInterest.tax : item.tax,
+                                  )}
+                                </strong>
                               </div>
                               <div className="detail-item positive-detail">
                                 <span>Lãi ròng</span>
                                 <strong>
-                                  +{formatCurrency(item.interestAfterTax)}
+                                  +{formatCurrency(
+                                    isOpenEnded
+                                      ? accruedInterest.interestAfterTax
+                                      : item.interestAfterTax,
+                                  )}
                                 </strong>
                               </div>
                               <div className="detail-item highlight-detail">
                                 <span>Tổng nhận được</span>
-                                <strong>{formatCurrency(item.totalAmount)}</strong>
+                                <strong>
+                                  {formatCurrency(
+                                    isOpenEnded
+                                      ? accruedInterest.totalAmount
+                                      : item.totalAmount,
+                                  )}
+                                </strong>
                               </div>
                               <div className="detail-item">
                                 <span>Tài khoản nguồn</span>
@@ -345,12 +399,21 @@ export default function SavingsList({
                               </div>
                               <div className="detail-item">
                                 <span>Tài khoản nhận</span>
-                                <strong>{settlementAccount?.name ?? "Chọn khi tất toán"}</strong>
+                                <strong>
+                                  {settlementAccount?.name ??
+                                    (isOpenEnded
+                                      ? "Chọn khi rút"
+                                      : "Chọn khi tất toán")}
+                                </strong>
                               </div>
                               <div className="detail-item">
-                                <span>Chỉ thị đáo hạn</span>
+                                <span>
+                                  {isOpenEnded ? "Cách rút" : "Chỉ thị đáo hạn"}
+                                </span>
                                 <strong>
-                                  {item.maturityInstruction === "return"
+                                  {isOpenEnded
+                                    ? "Rút bất cứ lúc nào"
+                                    : item.maturityInstruction === "return"
                                     ? "Nhận gốc và lãi"
                                     : item.maturityInstruction === "reinvest-all"
                                       ? "Tái đầu tư toàn bộ"
@@ -358,7 +421,7 @@ export default function SavingsList({
                                 </strong>
                               </div>
                             </div>
-                            {!isSettled && <div
+                            {!isSettled && progress && <div
                               className={
                                 progress.isComplete
                                   ? "term-progress complete"
@@ -414,8 +477,9 @@ export default function SavingsList({
                                   <span>
                                     <strong>Lịch sử nguồn tiền</strong>
                                     <small>
-                                      {cycles.length} kỳ gửi · Xem gốc, lãi và
-                                      các lần tái đầu tư
+                                      {isOpenEnded
+                                        ? "Theo dõi gốc, lãi và thuế đến ngày rút"
+                                        : `${cycles.length} kỳ gửi · Xem gốc, lãi và các lần tái đầu tư`}
                                     </small>
                                   </span>
                                   <span aria-hidden="true">
@@ -435,9 +499,9 @@ export default function SavingsList({
 
                                     {history.length === 0 && (
                                       <p className="history-origin-note">
-                                        Đây là kỳ đầu tiên đang được theo dõi.
-                                        Mỗi lần tái đầu tư tiếp theo sẽ tự động
-                                        được nối vào dòng lịch sử này.
+                                        {isOpenEnded
+                                          ? "Khoản không kỳ hạn này sinh lãi liên tục cho đến ngày bạn rút."
+                                          : "Đây là kỳ đầu tiên đang được theo dõi. Mỗi lần tái đầu tư tiếp theo sẽ tự động được nối vào dòng lịch sử này."}
                                       </p>
                                     )}
 
@@ -445,9 +509,17 @@ export default function SavingsList({
                                       {cycles.map((cycle, cycleIndex) => {
                                         const isCurrentCycle =
                                           cycleIndex === cycles.length - 1;
+                                        const isOpenEndedCycle =
+                                          cycle.termType === "open-ended";
+                                        const cycleValue = isOpenEndedCycle
+                                          ? calculateAccruedInterest(
+                                              cycle,
+                                              valuationDate,
+                                            )
+                                          : cycle;
                                         const nextCyclePrincipal =
                                           cycle.reinvestedAmount ??
-                                          cycle.totalAmount;
+                                          cycleValue.totalAmount;
 
                                         return (
                                           <div
@@ -462,8 +534,9 @@ export default function SavingsList({
                                                 <div>
                                                   <span>KỲ {cycleIndex + 1}</span>
                                                   <strong>
-                                                    {formatDate(cycle.startDate)} →{" "}
-                                                    {formatDate(cycle.maturityDate)}
+                                                    {isOpenEndedCycle
+                                                      ? `Từ ${formatDate(cycle.startDate)} · Không kỳ hạn`
+                                                      : `${formatDate(cycle.startDate)} → ${formatDate(cycle.maturityDate)}`}
                                                   </strong>
                                                 </div>
                                                 <span
@@ -474,7 +547,9 @@ export default function SavingsList({
                                                   }
                                                 >
                                                   {isCurrentCycle
-                                                    ? "Kỳ hiện tại"
+                                                    ? isOpenEndedCycle
+                                                      ? "Đang sinh lãi"
+                                                      : "Kỳ hiện tại"
                                                     : "Đã đáo hạn"}
                                                 </span>
                                               </div>
@@ -497,21 +572,23 @@ export default function SavingsList({
                                                 <div>
                                                   <span>Kỳ hạn</span>
                                                   <strong>
-                                                    {cycle.term} tháng
+                                                    {isOpenEndedCycle
+                                                      ? "Không kỳ hạn"
+                                                      : `${cycle.term} tháng`}
                                                   </strong>
                                                 </div>
                                                 <div>
                                                   <span>Lãi trước khấu trừ</span>
                                                   <strong>
                                                     {formatCurrency(
-                                                      cycle.interest,
+                                                      cycleValue.interest,
                                                     )}
                                                   </strong>
                                                 </div>
                                                 <div>
                                                   <span>Khấu trừ 5%</span>
                                                   <strong className="cycle-tax">
-                                                    −{formatCurrency(cycle.tax)}
+                                                    −{formatCurrency(cycleValue.tax)}
                                                   </strong>
                                                 </div>
                                                 <div>
@@ -519,19 +596,21 @@ export default function SavingsList({
                                                   <strong className="cycle-profit">
                                                     +
                                                     {formatCurrency(
-                                                      cycle.interestAfterTax,
+                                                      cycleValue.interestAfterTax,
                                                     )}
                                                   </strong>
                                                 </div>
                                                 <div className="cycle-total">
                                                   <span>
                                                     {isCurrentCycle
-                                                      ? "Dự kiến cuối kỳ"
+                                                      ? isOpenEndedCycle
+                                                        ? "Giá trị đến nay"
+                                                        : "Dự kiến cuối kỳ"
                                                       : "Nhận cuối kỳ"}
                                                   </span>
                                                   <strong>
                                                     {formatCurrency(
-                                                      cycle.totalAmount,
+                                                      cycleValue.totalAmount,
                                                     )}
                                                   </strong>
                                                 </div>
