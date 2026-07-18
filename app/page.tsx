@@ -227,6 +227,7 @@ export default function Home() {
   const [newInterestRate, setNewInterestRate] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [mode, setMode] = useState<SavingsFormMode>("add");
+  const [depositFormOpen, setDepositFormOpen] = useState(false);
   const [collapsedRates, setCollapsedRates] = useState<Set<number>>(new Set());
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(
     null,
@@ -1004,7 +1005,46 @@ export default function Home() {
     setForm(createEmptySavingsForm(getTodayIso()));
     setEditingId(null);
     setMode("add");
+    setDepositFormOpen(false);
   }
+
+  function closeDepositForm() {
+    resetForm();
+    setMessage("");
+  }
+
+  function openDepositForm() {
+    resetForm();
+    setMessage("");
+    setDepositFormOpen(true);
+  }
+
+  function openWorkspace(workspace: AppWorkspace) {
+    if (workspace !== "savings") closeDepositForm();
+    setActiveWorkspace(workspace);
+  }
+
+  useEffect(() => {
+    if (!depositFormOpen && mode === "add") return;
+
+    const previousOverflow = document.body.style.overflow;
+    if (depositFormOpen) document.body.style.overflow = "hidden";
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setForm(createEmptySavingsForm(getTodayIso()));
+      setEditingId(null);
+      setMode("add");
+      setDepositFormOpen(false);
+      setMessage("");
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [depositFormOpen, mode]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1502,6 +1542,7 @@ export default function Home() {
       maturityInstruction: item.maturityInstruction ?? "decide-later",
     });
     setMode(nextMode);
+    setDepositFormOpen(false);
     // Editing and reinvesting both replace the source item. Keeping its id
     // prevents the matured principal from being counted a second time.
     setEditingId(nextMode === "add" ? null : item.id);
@@ -1510,9 +1551,6 @@ export default function Home() {
         ? `Đã điền ${formatCurrency(item.totalAmount)} để tái đầu tư. Bạn có thể thay đổi kỳ hạn hoặc lãi suất.`
         : `Đang chỉnh sửa “${item.name}”.`,
     );
-    document
-      .getElementById("deposit-form")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function updateItemName(id: number, name: string) {
@@ -2133,7 +2171,7 @@ export default function Home() {
           type="button"
           aria-current={activeWorkspace === "savings" ? "page" : undefined}
           className={activeWorkspace === "savings" ? "active" : ""}
-          onClick={() => setActiveWorkspace("savings")}
+          onClick={() => openWorkspace("savings")}
         >
           <span aria-hidden="true">◇</span>
           Tiết kiệm
@@ -2142,7 +2180,7 @@ export default function Home() {
           type="button"
           aria-current={activeWorkspace === "finance" ? "page" : undefined}
           className={activeWorkspace === "finance" ? "active" : ""}
-          onClick={() => setActiveWorkspace("finance")}
+          onClick={() => openWorkspace("finance")}
         >
           <span aria-hidden="true">↕</span>
           Thu chi
@@ -2151,7 +2189,7 @@ export default function Home() {
           type="button"
           aria-current={activeWorkspace === "goals" ? "page" : undefined}
           className={activeWorkspace === "goals" ? "active" : ""}
-          onClick={() => setActiveWorkspace("goals")}
+          onClick={() => openWorkspace("goals")}
         >
           <span aria-hidden="true">◎</span>
           Mục tiêu
@@ -2160,7 +2198,7 @@ export default function Home() {
           type="button"
           aria-current={activeWorkspace === "backup" ? "page" : undefined}
           className={activeWorkspace === "backup" ? "active" : ""}
-          onClick={() => setActiveWorkspace("backup")}
+          onClick={() => openWorkspace("backup")}
         >
           <span aria-hidden="true">◆</span>
           Sao lưu
@@ -2195,6 +2233,28 @@ export default function Home() {
       </div>
     </div>
   );
+
+  const depositFormView = (
+    <DepositForm
+      accounts={vndAccounts}
+      form={form}
+      message={message}
+      mode={mode}
+      newInterestRate={newInterestRate}
+      onAddRate={handleAddRate}
+      onDeleteRate={handleDeleteRate}
+      onFormChange={setForm}
+      onMessageChange={setMessage}
+      onNewInterestRateChange={setNewInterestRate}
+      onOpenFinance={() => openWorkspace("finance")}
+      onReset={closeDepositForm}
+      onSubmit={handleSubmit}
+      onUpdateForm={updateForm}
+      sortedRates={sortedRates}
+    />
+  );
+  const savingsEditorOpen =
+    activeSavingsProduct === "accumulation" && mode !== "add";
 
   const fullBackupPanel = (
     <BackupPanel
@@ -2279,7 +2339,11 @@ export default function Home() {
   }
 
   return (
-    <main className="page-shell">
+    <main
+      className={`page-shell savings-page-shell${
+        savingsEditorOpen ? " savings-side-editor-open" : ""
+      }`}
+    >
       <div className="app-container">
         {appHeader}
         {cloudBanner}
@@ -2287,98 +2351,115 @@ export default function Home() {
         <ProductSwitcher
           activeProduct={activeSavingsProduct}
           accumulationPrincipal={summary.principal}
-          onChange={setActiveSavingsProduct}
+          onChange={(product) => {
+            closeDepositForm();
+            setActiveSavingsProduct(product);
+          }}
           prosperityPrincipal={prosperityPrincipal}
         />
 
-        {activeSavingsProduct === 'prosperity' ? (
+        {activeSavingsProduct === "prosperity" ? (
           <ProsperityDashboard
             accounts={vndAccounts}
             items={prosperityItems}
             onDelete={handleDeleteProsperity}
             onHarvest={handleHarvestProsperity}
-            onOpenFinance={() => setActiveWorkspace("finance")}
+            onOpenFinance={() => openWorkspace("finance")}
             onSave={handleSaveProsperity}
             today={today}
           />
         ) : (
           <>
-        <ActionCenter
-          budgetAlerts={budgetAlerts}
-          maturityAlerts={maturityAlerts}
-          onOpenFinance={() => setActiveWorkspace("finance")}
-          onOpenSettlement={openSettlement}
-          reminderCount={reminderCount}
-          today={today}
-        />
-        <DepositForm
-          accounts={vndAccounts}
-          form={form}
-          message={message}
-          mode={mode}
-          newInterestRate={newInterestRate}
-          onAddRate={handleAddRate}
-          onDeleteRate={handleDeleteRate}
-          onFormChange={setForm}
-          onMessageChange={setMessage}
-          onNewInterestRateChange={setNewInterestRate}
-          onOpenFinance={() => setActiveWorkspace("finance")}
-          onReset={resetForm}
-          onSubmit={handleSubmit}
-          onUpdateForm={updateForm}
-          sortedRates={sortedRates}
-        />
-        <SavingsOverview
-          savings={savings}
-          summary={summary}
-          today={today}
-        />
-        <MaturityCashflow
-          activeSavings={activeSavings}
-          maturityAlerts={maturityAlerts}
-          monthlyInterestTarget={monthlyInterestTarget}
-          today={today}
-        />
-        <InterestGoalPlanner
-          currentMonthlyInterestEstimate={currentMonthlyInterestEstimate}
-          currentPortfolio={currentPortfolio}
-          effectiveGoalRate={effectiveGoalRate}
-          goalContribution={goalContribution}
-          goalInterestRate={goalInterestRate}
-          goalMonthlyContribution={goalMonthlyContribution}
-          goalMonthlyInterest={goalMonthlyInterest}
-          goalPlan={goalPlan}
-          onGoalInterestRateChange={setGoalInterestRate}
-          onGoalMonthlyContributionChange={setGoalMonthlyContribution}
-          onGoalMonthlyInterestChange={setGoalMonthlyInterest}
-          suggestedGoalRate={suggestedGoalRate}
-        />
-        <SavingsList
-          accounts={finance.accounts}
-          collapsedRates={collapsedRates}
-          expandedHistoryId={expandedHistoryId}
-          onDelete={handleDelete}
-          onFinalizeItemName={finalizeItemName}
-          onOpenSettlement={openSettlement}
-          onPrepareItem={prepareItem}
-          onToggleGroup={toggleGroup}
-          onToggleHistory={(id) =>
-            setExpandedHistoryId((current) => (current === id ? null : id))
-          }
-          onUpdateItemName={updateItemName}
-          savings={savings}
-          today={today}
-        />
-        {settlingId !== null && (
-          <SettlementModal
-            accounts={vndAccounts}
-            draft={settlementDraft}
-            item={savings.find((candidate) => candidate.id === settlingId)}
-            onClose={closeSettlement}
-            onDraftChange={setSettlementDraft}
-            onSubmit={handleSettlement}
-          />
-        )}
+            <section
+              className="savings-command-bar"
+              aria-label="Thao tác khoản gửi"
+            >
+              <div>
+                <span className="section-kicker">TÍCH LŨY</span>
+                <strong>Quản lý các khoản gửi</strong>
+                <small>
+                  Thêm khoản mới ngay tại đây, không cần cuộn về đầu trang.
+                </small>
+              </div>
+              <button type="button" onClick={openDepositForm}>
+                <span aria-hidden="true">+</span>
+                Thêm khoản gửi
+              </button>
+            </section>
+            {message && !depositFormOpen && mode === "add" && (
+              <div className="status-message savings-page-status" role="status">
+                <span aria-hidden="true">✓</span>
+                {message}
+                <button
+                  type="button"
+                  onClick={() => setMessage("")}
+                  aria-label="Đóng thông báo"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            <ActionCenter
+              budgetAlerts={budgetAlerts}
+              maturityAlerts={maturityAlerts}
+              onOpenFinance={() => openWorkspace("finance")}
+              onOpenSettlement={openSettlement}
+              reminderCount={reminderCount}
+              today={today}
+            />
+            <SavingsOverview
+              savings={savings}
+              summary={summary}
+              today={today}
+            />
+            <MaturityCashflow
+              activeSavings={activeSavings}
+              maturityAlerts={maturityAlerts}
+              monthlyInterestTarget={monthlyInterestTarget}
+              today={today}
+            />
+            <InterestGoalPlanner
+              currentMonthlyInterestEstimate={currentMonthlyInterestEstimate}
+              currentPortfolio={currentPortfolio}
+              effectiveGoalRate={effectiveGoalRate}
+              goalContribution={goalContribution}
+              goalInterestRate={goalInterestRate}
+              goalMonthlyContribution={goalMonthlyContribution}
+              goalMonthlyInterest={goalMonthlyInterest}
+              goalPlan={goalPlan}
+              onGoalInterestRateChange={setGoalInterestRate}
+              onGoalMonthlyContributionChange={setGoalMonthlyContribution}
+              onGoalMonthlyInterestChange={setGoalMonthlyInterest}
+              suggestedGoalRate={suggestedGoalRate}
+            />
+            <SavingsList
+              accounts={finance.accounts}
+              collapsedRates={collapsedRates}
+              expandedHistoryId={expandedHistoryId}
+              onDelete={handleDelete}
+              onFinalizeItemName={finalizeItemName}
+              onOpenSettlement={openSettlement}
+              onPrepareItem={prepareItem}
+              onToggleGroup={toggleGroup}
+              onToggleHistory={(id) =>
+                setExpandedHistoryId((current) =>
+                  current === id ? null : id,
+                )
+              }
+              onUpdateItemName={updateItemName}
+              savings={savings}
+              today={today}
+            />
+            {settlingId !== null && (
+              <SettlementModal
+                accounts={vndAccounts}
+                draft={settlementDraft}
+                item={savings.find((candidate) => candidate.id === settlingId)}
+                onClose={closeSettlement}
+                onDraftChange={setSettlementDraft}
+                onSubmit={handleSettlement}
+              />
+            )}
           </>
         )}
         <footer>
@@ -2388,6 +2469,56 @@ export default function Home() {
           </p>
         </footer>
       </div>
+      {activeSavingsProduct === "accumulation" &&
+        depositFormOpen &&
+        mode === "add" && (
+          <div
+            className="savings-form-modal-backdrop"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) closeDepositForm();
+            }}
+          >
+            <div
+              className="savings-form-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Thêm khoản gửi mới"
+            >
+              <button
+                type="button"
+                className="savings-form-close"
+                onClick={closeDepositForm}
+                aria-label="Đóng form thêm khoản gửi"
+                autoFocus
+              >
+                ×
+              </button>
+              {depositFormView}
+            </div>
+          </div>
+        )}
+      {savingsEditorOpen && (
+        <aside
+          className="savings-side-editor"
+          role="dialog"
+          aria-label={
+            mode === "reinvest"
+              ? "Tạo kỳ tái đầu tư"
+              : "Chỉnh sửa khoản gửi"
+          }
+        >
+          <button
+            type="button"
+            className="savings-form-close"
+            onClick={closeDepositForm}
+            aria-label="Đóng form chỉnh sửa khoản gửi"
+            autoFocus
+          >
+            ×
+          </button>
+          {depositFormView}
+        </aside>
+      )}
     </main>
   );
 }

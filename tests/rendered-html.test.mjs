@@ -37,7 +37,7 @@ test("server-renders the correct application entry screen", async () => {
     assert.match(html, /Đang mở sổ tiết kiệm của bạn/i);
     assert.match(html, /kiểm tra phiên đăng nhập và dữ liệu đã lưu/i);
   } else {
-    assert.match(html, /Thêm khoản gửi mới/i);
+    assert.match(html, /Thêm khoản gửi/i);
     assert.match(html, /Tổng vốn gửi/i);
     assert.match(html, /Lãi ròng kỳ hiện tại đến hôm nay/i);
     assert.match(html, /Lãi phát sinh hôm nay/i);
@@ -114,6 +114,26 @@ test("routes withdrawn and non-reinvested money into Finance accounts", async ()
   assert.match(page, /Chọn tài khoản nhận tiền/);
   assert.match(page, /type: "savings-settlement"/);
   assert.match(page, /customInterestRate: String\(rate\)/);
+});
+
+test("opens new deposits in a modal and edits in a responsive side panel", async () => {
+  const [page, form, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/savings/deposit-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /const \[depositFormOpen, setDepositFormOpen\]/);
+  assert.match(page, /className="savings-form-modal-backdrop"/);
+  assert.match(page, /className="savings-side-editor"/);
+  assert.match(page, /savings-side-editor-open/);
+  assert.match(page, /Thêm khoản mới ngay tại đây, không cần cuộn về đầu trang/);
+  assert.match(page, /mode !== "add"/);
+  assert.doesNotMatch(page, /scrollIntoView/);
+  assert.match(form, /className="btn-cancel"/);
+  assert.match(styles, /\.savings-side-editor-open/);
+  assert.match(styles, /padding-right: calc\(var\(--savings-editor-width\) \+ 26px\)/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.savings-side-editor/);
 });
 
 test("matches the reference daily-compounding calculation", () => {
@@ -277,6 +297,8 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Phát lộc đang ươm/);
   assert.match(manager, /Số tiền thực nhận/);
   assert.match(manager, /Tỷ giá thực tế/);
+  assert.match(manager, /inputMode="decimal"/);
+  assert.match(manager, /parseExchangeRateInput/);
   assert.match(manager, /ĐƠN VỊ NHẬP/);
   assert.match(manager, /useState<FinanceCurrency>\("KRW"\)/);
   assert.match(manager, /formatFinanceAmountInput\(event\.target\.value\)/);

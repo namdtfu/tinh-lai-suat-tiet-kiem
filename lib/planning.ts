@@ -101,6 +101,15 @@ export function normalizeExchangeSettings(
   };
 }
 
+export function parseExchangeRateInput(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+(?:\.\d{0,4})?$/.test(normalized)) return null;
+  const rate = Number(normalized);
+  return Number.isFinite(rate) && rate > 0 && rate < 10_000
+    ? rate
+    : null;
+}
+
 export function normalizeFinancialGoals(value: unknown): FinancialGoal[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((candidate) => {

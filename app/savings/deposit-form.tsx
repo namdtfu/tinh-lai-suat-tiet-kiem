@@ -393,18 +393,13 @@ export default function DepositForm({
                 <span>{mode === "edit" ? "✓" : "+"}</span>
                 {submitLabel}
               </button>
-              {mode !== "add" && (
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => {
-                    onReset();
-                    onMessageChange("Đã hủy thay đổi.");
-                  }}
-                >
-                  Hủy
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn-cancel"
+                onClick={onReset}
+              >
+                Hủy
+              </button>
             </div>
           </form>
         </section>

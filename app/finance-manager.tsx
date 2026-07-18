@@ -37,6 +37,7 @@ import {
 import {
   calculateNetWorth,
   ExchangeRateSettings,
+  parseExchangeRateInput,
 } from "@/lib/planning";
 import AccountDialog from "./finance/account-dialog";
 import BudgetDialog from "./finance/budget-dialog";
@@ -60,6 +61,42 @@ import styles from "./finance-manager.module.css";
 
 type FinanceTab = "overview" | "transactions" | "budgets" | "accounts";
 type TransactionFilter = "all" | EditableFinanceTransactionType | "savings";
+
+function ExchangeRateInput({
+  onCommit,
+  rate,
+}: {
+  onCommit: (rate: number) => void;
+  rate: number;
+}) {
+  const [value, setValue] = useState(String(rate));
+
+  return (
+    <input
+      aria-label="Tỷ giá một KRW sang VND"
+      inputMode="decimal"
+      value={value}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        if (/^\d*(?:[.,]\d{0,4})?$/.test(nextValue)) {
+          setValue(nextValue);
+        }
+      }}
+      onBlur={() => {
+        const parsedRate = parseExchangeRateInput(value);
+        if (parsedRate === null) {
+          setValue(String(rate));
+          return;
+        }
+        setValue(String(parsedRate));
+        onCommit(parsedRate);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+    />
+  );
+}
 
 type FinanceManagerProps = {
   state: FinanceState;
@@ -946,7 +983,20 @@ export default function FinanceManager({
           {netWorthSettingsOpen && (
             <div className={styles.exchangeSettings}>
               <label>Đồng tiền quy đổi chính<select value={exchangeSettings.baseCurrency} onChange={(event) => onExchangeSettingsChange({ ...exchangeSettings, baseCurrency: event.target.value as FinanceCurrency })}><option value="VND">VND</option><option value="KRW">KRW</option></select></label>
-              <label>1 KRW bằng bao nhiêu VND<input type="number" min="0.0001" step="0.0001" value={exchangeSettings.krwToVndRate} onChange={(event) => { const rate = Number(event.target.value); if (rate > 0) onExchangeSettingsChange({ ...exchangeSettings, krwToVndRate: rate, updatedAt: new Date().toISOString() }); }} /></label>
+              <label>
+                1 KRW bằng bao nhiêu VND
+                <ExchangeRateInput
+                  key={exchangeSettings.krwToVndRate}
+                  rate={exchangeSettings.krwToVndRate}
+                  onCommit={(rate) => {
+                    onExchangeSettingsChange({
+                      ...exchangeSettings,
+                      krwToVndRate: rate,
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }}
+                />
+              </label>
               <label>Nguồn tỷ giá<select value={exchangeSettings.source} onChange={(event) => onExchangeSettingsChange({ ...exchangeSettings, source: event.target.value as ExchangeRateSettings["source"], updatedAt: new Date().toISOString() })}><option value="reference">Tỷ giá tham chiếu</option><option value="actual">Tỷ giá giao dịch thực tế</option></select></label>
               <button type="button" disabled={!latestActualRate} onClick={() => onExchangeSettingsChange({ ...exchangeSettings, krwToVndRate: latestActualRate, source: "actual", updatedAt: new Date().toISOString() })}>Dùng giao dịch quy đổi gần nhất</button>
               <small>{exchangeSettings.updatedAt ? `Cập nhật ${new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(exchangeSettings.updatedAt))}` : "Tỷ giá khởi tạo — hãy cập nhật theo tỷ giá bạn thực dùng."}</small>

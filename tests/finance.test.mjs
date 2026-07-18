@@ -22,6 +22,7 @@ import {
 import {
   calculateFinancialGoalProgress,
   calculateNetWorth,
+  parseExchangeRateInput,
 } from "../lib/planning.ts";
 import {
   buildSavingsTrend,
@@ -37,6 +38,14 @@ test("amount inputs add Vietnamese thousand separators while keeping numeric val
   assert.equal(formatFinanceAmountInput(""), "");
   assert.equal(parseFinanceAmountInput("1.000.000"), 1_000_000);
   assert.equal(parseFinanceAmountInput("₩ 1.000.000"), 1_000_000);
+});
+
+test("exchange-rate inputs accept decimal dots and commas", () => {
+  assert.equal(parseExchangeRateInput("18.5"), 18.5);
+  assert.equal(parseExchangeRateInput("17,5"), 17.5);
+  assert.equal(parseExchangeRateInput("18.5678"), 18.5678);
+  assert.equal(parseExchangeRateInput("18.56789"), null);
+  assert.equal(parseExchangeRateInput("abc"), null);
 });
 
 test("editing a budget replaces its old values without creating a duplicate", () => {
