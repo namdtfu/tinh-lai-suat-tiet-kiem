@@ -66,7 +66,6 @@ type FinanceManagerProps = {
   onChange: Dispatch<SetStateAction<FinanceState>>;
   prosperityValueVnd: number;
   savingsValueVnd: number;
-  walletValueVnd: number;
   exchangeSettings: ExchangeRateSettings;
   onExchangeSettingsChange: (settings: ExchangeRateSettings) => void;
 };
@@ -78,7 +77,6 @@ export default function FinanceManager({
   prosperityValueVnd,
   savingsValueVnd,
   state,
-  walletValueVnd,
 }: FinanceManagerProps) {
   const [activeTab, setActiveTab] = useState<FinanceTab>("overview");
   const [selectedMonth, setSelectedMonth] = useState(monthKeyFromIso(todayIso()));
@@ -142,7 +140,6 @@ export default function FinanceManager({
       calculateNetWorth(
         state,
         savingsValueVnd,
-        walletValueVnd,
         exchangeSettings,
         prosperityValueVnd,
       ),
@@ -151,7 +148,6 @@ export default function FinanceManager({
       prosperityValueVnd,
       savingsValueVnd,
       state,
-      walletValueVnd,
     ],
   );
   const latestActualRate = useMemo(() => {
@@ -945,7 +941,6 @@ export default function FinanceManager({
             <article><span>Tài khoản & tiền mặt</span><strong>{formatMoney(netWorth.liquidInBase, netWorth.baseCurrency)}</strong><small>{formatMoney(netWorth.accountKrw, "KRW")} · {formatMoney(netWorth.accountVnd, "VND")}</small></article>
             <article><span>Khoản tiết kiệm</span><strong>{formatMoney(netWorth.savingsInBase, netWorth.baseCurrency)}</strong><small>Giá trị hiện tại gồm lãi tích lũy</small></article>
             <article><span>Phát lộc đang ươm</span><strong>{formatMoney(netWorth.prosperityInBase, netWorth.baseCurrency)}</strong><small>Gốc và lãi ròng tạm tính sau thuế</small></article>
-            <article><span>Ví chờ tái đầu tư</span><strong>{formatMoney(netWorth.walletInBase, netWorth.baseCurrency)}</strong><small>Tiền dư đang khả dụng</small></article>
             <article className={styles.netWorthTotal}><span>Tài sản ròng</span><strong>{formatMoney(netWorth.totalInBase, netWorth.baseCurrency)}</strong><small>Theo tỷ giá đã lưu</small></article>
           </div>
           {netWorthSettingsOpen && (

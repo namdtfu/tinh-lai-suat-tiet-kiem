@@ -51,7 +51,6 @@ export type NetWorthSnapshot = {
   prosperityInBase: number;
   savingsInBase: number;
   totalInBase: number;
-  walletInBase: number;
 };
 
 export type FinancialGoalProgress = {
@@ -166,7 +165,6 @@ export function convertCurrency(
 export function calculateNetWorth(
   finance: FinanceState,
   savingsValueVnd: number,
-  walletValueVnd: number,
   settings: ExchangeRateSettings,
   prosperityValueVnd = 0,
 ): NetWorthSnapshot {
@@ -176,12 +174,6 @@ export function calculateNetWorth(
     convertCurrency(totals.VND, "VND", settings.baseCurrency, settings);
   const savingsInBase = convertCurrency(
     savingsValueVnd,
-    "VND",
-    settings.baseCurrency,
-    settings,
-  );
-  const walletInBase = convertCurrency(
-    walletValueVnd,
     "VND",
     settings.baseCurrency,
     settings,
@@ -199,9 +191,7 @@ export function calculateNetWorth(
     liquidInBase,
     prosperityInBase,
     savingsInBase,
-    totalInBase:
-      liquidInBase + savingsInBase + prosperityInBase + walletInBase,
-    walletInBase,
+    totalInBase: liquidInBase + savingsInBase + prosperityInBase,
   };
 }
 

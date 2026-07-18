@@ -753,7 +753,6 @@ test("net worth converts KRW accounts and combines liquid cash with savings", ()
   const snapshot = calculateNetWorth(
     finance,
     200_000,
-    50_000,
     { baseCurrency: "VND", krwToVndRate: 20, source: "actual", updatedAt: "" },
     80_000,
   );
@@ -761,8 +760,7 @@ test("net worth converts KRW accounts and combines liquid cash with savings", ()
   assert.equal(snapshot.liquidInBase, 300_000);
   assert.equal(snapshot.savingsInBase, 200_000);
   assert.equal(snapshot.prosperityInBase, 80_000);
-  assert.equal(snapshot.walletInBase, 50_000);
-  assert.equal(snapshot.totalInBase, 630_000);
+  assert.equal(snapshot.totalInBase, 580_000);
 });
 
 test("net worth stays continuous when Phát lộc moves out of and back into an account", () => {
@@ -805,9 +803,9 @@ test("net worth stays continuous when Phát lộc moves out of and back into an 
     ],
   };
 
-  assert.equal(calculateNetWorth(initialFinance, 0, 0, settings).totalInBase, 100_000);
-  assert.equal(calculateNetWorth(growingFinance, 0, 0, settings, 26_000).totalInBase, 101_000);
-  assert.equal(calculateNetWorth(harvestedFinance, 0, 0, settings).totalInBase, 101_000);
+  assert.equal(calculateNetWorth(initialFinance, 0, settings).totalInBase, 100_000);
+  assert.equal(calculateNetWorth(growingFinance, 0, settings, 26_000).totalInBase, 101_000);
+  assert.equal(calculateNetWorth(harvestedFinance, 0, settings).totalInBase, 101_000);
 });
 
 test("monthly budget rolls unused money forward and forecasts month end", () => {

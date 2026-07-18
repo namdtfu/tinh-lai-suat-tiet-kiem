@@ -7,15 +7,6 @@ import {
 } from "@/lib/savings";
 import SavingsTrendChart from "./savings-trend-chart";
 
-type CashLedgerEntryView = {
-  id: string;
-  amount: number;
-  date: string;
-  savingsName: string;
-  status: "available" | "used";
-  usedAt?: string;
-};
-
 export type SavingsOverviewSummary = {
   principal: number;
   interest: number;
@@ -30,16 +21,10 @@ export type SavingsOverviewSummary = {
 };
 
 export default function SavingsOverview({
-  cashBalance,
-  cashLedger,
-  onToggleCashEntryStatus,
   savings,
   summary,
   today,
 }: {
-  cashBalance: number;
-  cashLedger: CashLedgerEntryView[];
-  onToggleCashEntryStatus: (id: string) => void;
   savings: SavingsItem[];
   summary: SavingsOverviewSummary;
   today: string;
@@ -87,7 +72,7 @@ export default function SavingsOverview({
               <div>
                 <h3>Tổng tài sản dự kiến</h3>
                 <p>{formatCurrency(summary.assets)}</p>
-                <small>Vốn + lãi + tiền đang giữ trong ví</small>
+                <small>Vốn gửi + lãi ròng dự kiến</small>
                 <small>
                   Giá trị đến hôm nay: {formatCurrency(summary.currentAssets)}
                 </small>
@@ -123,68 +108,6 @@ export default function SavingsOverview({
               </div>
             </div>
           </article>
-          <div className="cash-wallet">
-            <div className="wallet-overview">
-              <span className="wallet-icon" aria-hidden="true">₫</span>
-              <div className="wallet-copy">
-                <span>VÍ TIỀN CHƯA TÁI ĐẦU TƯ</span>
-                <h3>Phần tiền đáo hạn đang được giữ lại</h3>
-                <p>
-                  Tiền không đưa vào kỳ mới sẽ nằm ở đây, không bị tính nhầm
-                  là vốn đang gửi.
-                </p>
-              </div>
-              <div className="wallet-balance">
-                <span>Số dư khả dụng</span>
-                <strong>{formatCurrency(cashBalance)}</strong>
-                <small>
-                  {cashLedger.filter((entry) => entry.status === "available").length}{" "}
-                  khoản đang giữ
-                </small>
-              </div>
-            </div>
-
-            {cashLedger.length > 0 ? (
-              <details className="wallet-history">
-                <summary>
-                  <span>Lịch sử ví ({cashLedger.length})</span>
-                  <span aria-hidden="true">⌄</span>
-                </summary>
-                <div className="wallet-entry-list">
-                  {[...cashLedger].reverse().map((entry) => (
-                    <article
-                      className={`wallet-entry ${entry.status}`}
-                      key={entry.id}
-                    >
-                      <div>
-                        <strong>{entry.savingsName}</strong>
-                        <span>
-                          Tách ra khi tái đầu tư ngày {formatDate(entry.date)}
-                          {entry.usedAt
-                            ? ` · Đã rút ngày ${formatDate(entry.usedAt)}`
-                            : ""}
-                        </span>
-                      </div>
-                      <strong>{formatCurrency(entry.amount)}</strong>
-                      <button
-                        type="button"
-                        onClick={() => onToggleCashEntryStatus(entry.id)}
-                      >
-                        {entry.status === "available"
-                          ? "Rút khỏi ví"
-                          : "Đưa lại vào ví"}
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              </details>
-            ) : (
-              <p className="wallet-empty">
-                Chưa có tiền giữ lại. Khi tái đầu tư ít hơn số nhận cuối kỳ,
-                phần chênh lệch sẽ tự động xuất hiện tại đây.
-              </p>
-            )}
-          </div>
           <p className="calculation-note">
             Lãi đến hôm nay dùng lãi đơn: gốc × lãi suất năm × số ngày/365 và
             làm tròn xuống từng khoản để khớp app thực tế. Lãi riêng hôm nay là

@@ -136,6 +136,7 @@ export default function SettlementModal({
           <label className="settlement-account-field">
             Tài khoản nhận tiền
             <select
+              required
               value={draft.accountId}
               onChange={(event) =>
                 onDraftChange((current) => ({
@@ -144,7 +145,7 @@ export default function SettlementModal({
                 }))
               }
             >
-              <option value="">Không cập nhật số dư tài khoản</option>
+              <option value="">Chọn tài khoản nhận tiền</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.name}

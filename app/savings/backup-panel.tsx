@@ -22,7 +22,6 @@ type SafetySnapshotView = {
 export type FullBackupSummary = {
   accounts: number;
   budgets: number;
-  cashLedger: number;
   financialGoals: number;
   prosperity: number;
   savings: number;
@@ -95,15 +94,14 @@ export default function BackupPanel<TVersion extends VersionView>({
             <div className="backup-copy">
               <h3>Một tệp chứa toàn bộ dữ liệu</h3>
               <p>
-                Bao gồm Tích lũy, Phát lộc, lịch sử tái đầu tư, ví tiền, tài
-                khoản, giao dịch, ngân sách, tỷ giá, mục tiêu và lịch sử phiên bản.
+                Bao gồm Tích lũy, Phát lộc, lịch sử tái đầu tư, tài khoản, giao
+                dịch, ngân sách, tỷ giá, mục tiêu và lịch sử phiên bản.
               </p>
               <div className="backup-summary" aria-label="Nội dung bản sao lưu">
                 <span>{backupSummary.savings} Tích lũy</span>
                 <span>{backupSummary.prosperity} Phát lộc</span>
                 <span>{backupSummary.accounts} tài khoản</span>
                 <span>{backupSummary.transactions} giao dịch</span>
-                <span>{backupSummary.cashLedger} khoản trong ví</span>
                 <span>{backupSummary.budgets} ngân sách</span>
                 <span>{backupSummary.financialGoals} mục tiêu</span>
                 <span>{backupSummary.versions} mốc lịch sử</span>

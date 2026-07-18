@@ -43,7 +43,7 @@ test("server-renders the correct application entry screen", async () => {
     assert.match(html, /Lãi phát sinh hôm nay/i);
     assert.match(html, /Tổng lãi dự kiến/i);
     assert.match(html, /Tổng tài sản dự kiến/i);
-    assert.match(html, /Ví tiền chưa tái đầu tư/i);
+    assert.doesNotMatch(html, /Ví tiền chưa tái đầu tư/i);
     assert.match(html, /Tiền sẽ về khi nào/i);
     assert.match(html, /Danh sách/i);
   }
@@ -75,7 +75,7 @@ test("keeps reinvestment history and term progress in the product source", async
   assert.match(page, /Math\.max\(0, amount - maturedAmount\)/);
 });
 
-test("splits a matured balance between reinvestment and the cash wallet", () => {
+test("calculates the matured remainder that returns to a linked account", () => {
   const maturedAmount = 1_029_000;
   const partialReinvestment = 1_000_000;
   const largerReinvestment = 1_100_000;
@@ -98,21 +98,22 @@ test("splits a matured balance between reinvestment and the cash wallet", () => 
   );
 });
 
-test("deletes wallet entries with their source savings item", async () => {
+test("routes withdrawn and non-reinvested money into Finance accounts", async () => {
   const page = (
     await Promise.all([
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/savings/savings-overview.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/settlement-modal.tsx", import.meta.url), "utf8"),
     ])
   ).join("\n");
 
-  assert.match(
-    page,
-    /entries\.filter\(\(entry\) => entry\.savingsId !== id\)/,
-  );
-  assert.match(page, /giao dịch ví liên quan/);
+  assert.doesNotMatch(page, /Ví tiền chưa tái đầu tư/);
+  assert.doesNotMatch(page, /Rút khỏi ví/);
+  assert.doesNotMatch(page, /type: "reinvestment-remainder"/);
+  assert.match(page, /Chọn tài khoản VND nhận phần tiền không tái đầu tư/);
+  assert.match(page, /Chọn tài khoản nhận tiền/);
+  assert.match(page, /type: "savings-settlement"/);
   assert.match(page, /customInterestRate: String\(rate\)/);
-  assert.match(page, /Rút khỏi ví/);
 });
 
 test("matches the reference daily-compounding calculation", () => {

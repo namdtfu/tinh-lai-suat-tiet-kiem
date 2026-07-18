@@ -856,16 +856,6 @@ export default function Home() {
     [finance.accounts],
   );
 
-  const cashBalance = useMemo(
-    () =>
-      cashLedger.reduce(
-        (sum, entry) =>
-          entry.status === "available" ? sum + entry.amount : sum,
-        0,
-      ),
-    [cashLedger],
-  );
-
   const today = getTodayIso();
   const prosperityCurrentValue = useMemo(
     () =>
@@ -906,16 +896,16 @@ export default function Home() {
     return {
       principal,
       interest,
-      assets: principal + interest + cashBalance,
+      assets: principal + interest,
       accruedInterest: accrued.interest,
       accruedTax: accrued.tax,
       accruedInterestAfterTax: accrued.interestAfterTax,
-      currentAssets: principal + accrued.interestAfterTax + cashBalance,
+      currentAssets: principal + accrued.interestAfterTax,
       todayInterest: todayProfit.interest,
       todayTax: todayProfit.tax,
       todayInterestAfterTax: todayProfit.interestAfterTax,
     };
-  }, [activeSavings, cashBalance, today]);
+  }, [activeSavings, today]);
 
   const monthlyInterestTarget = parseAmount(goalMonthlyInterest);
   const maturityAlerts = useMemo(() => {
@@ -1058,6 +1048,32 @@ export default function Home() {
         : 0;
     const cashRemainder = Math.max(0, maturedAmount - amount);
     const additionalContribution = Math.max(0, amount - maturedAmount);
+    const hasFundingAccount = vndAccounts.some(
+      (account) => account.id === form.fundingAccountId,
+    );
+    const hasSettlementAccount = vndAccounts.some(
+      (account) => account.id === form.settlementAccountId,
+    );
+    if (
+      mode === "reinvest" &&
+      additionalContribution > 0 &&
+      !hasFundingAccount
+    ) {
+      setMessage(
+        "Chọn tài khoản VND để trừ phần vốn góp thêm khi tái đầu tư.",
+      );
+      return;
+    }
+    if (
+      mode === "reinvest" &&
+      cashRemainder > 0 &&
+      !hasSettlementAccount
+    ) {
+      setMessage(
+        "Chọn tài khoản VND nhận phần tiền không tái đầu tư.",
+      );
+      return;
+    }
     const completedCycle =
       mode === "reinvest" && sourceItem
         ? toSavingsCycle(sourceItem, {
@@ -1172,24 +1188,8 @@ export default function Home() {
           return { ...current, transactions: nextTransactions };
         });
         if (cashRemainder > 0) {
-          if (!item.settlementAccountId) {
-            setCashLedger((entries) => [
-              ...entries,
-              {
-                id: `${Date.now()}-${sourceItem.id}-${previousHistory.length}`,
-                amount: cashRemainder,
-                date: item.startDate,
-                savingsId: sourceItem.id,
-                savingsName: item.name,
-                status: "available",
-                type: "reinvestment-remainder",
-              },
-            ]);
-          }
           setMessage(
-            item.settlementAccountId
-              ? `Đã tái đầu tư ${formatCurrency(amount)} và chuyển ${formatCurrency(cashRemainder)} vào tài khoản nhận.`
-              : `Đã tái đầu tư ${formatCurrency(amount)} và chuyển ${formatCurrency(cashRemainder)} vào Ví tiền chưa tái đầu tư.`,
+            `Đã tái đầu tư ${formatCurrency(amount)} và chuyển ${formatCurrency(cashRemainder)} vào tài khoản nhận.`,
           );
         } else if (additionalContribution > 0) {
           setMessage(
@@ -1234,6 +1234,15 @@ export default function Home() {
     const item = savings.find((candidate) => candidate.id === settlingId);
     const actualAmount = parseAmount(settlementDraft.amount);
     if (!item || !actualAmount || !settlementDraft.date) return;
+    const settlementAccount = vndAccounts.find(
+      (account) => account.id === settlementDraft.accountId,
+    );
+    if (!settlementAccount) {
+      setMessage(
+        "Chọn tài khoản VND nhận tiền trước khi xác nhận rút hoặc tất toán.",
+      );
+      return;
+    }
 
     setSavings((items) =>
       items.map((candidate) =>
@@ -1451,20 +1460,9 @@ export default function Home() {
     const item = savings.find((current) => current.id === id);
     if (!item) return;
 
-    const linkedWalletEntries = cashLedger.filter(
-      (entry) => entry.savingsId === id,
-    );
-    const linkedWalletTotal = linkedWalletEntries.reduce(
-      (sum, entry) => sum + entry.amount,
-      0,
-    );
-    const walletWarning = linkedWalletEntries.length
-      ? `\n\n${linkedWalletEntries.length} giao dịch ví liên quan, tổng ${formatCurrency(linkedWalletTotal)}, cũng sẽ được xóa.`
-      : "";
-
     if (
       !window.confirm(
-        `Xóa khoản gửi “${item.name}” cùng toàn bộ lịch sử tái đầu tư?${walletWarning}`,
+        `Xóa khoản gửi “${item.name}” cùng toàn bộ lịch sử tái đầu tư và giao dịch Thu chi liên kết?`,
       )
     ) {
       return;
@@ -1482,34 +1480,7 @@ export default function Home() {
     }));
     if (editingId === id) resetForm();
     if (expandedHistoryId === id) setExpandedHistoryId(null);
-    setMessage(
-      linkedWalletEntries.length
-        ? `Đã xóa “${item.name}” cùng ${linkedWalletEntries.length} giao dịch ví liên quan.`
-        : `Đã xóa “${item.name}”.`,
-    );
-  }
-
-  function toggleCashEntryStatus(id: string) {
-    const entry = cashLedger.find((current) => current.id === id);
-    if (!entry) return;
-
-    const markAsUsed = entry.status === "available";
-    setCashLedger((entries) =>
-      entries.map((current) =>
-        current.id === id
-          ? {
-              ...current,
-              status: markAsUsed ? "used" : "available",
-              usedAt: markAsUsed ? getTodayIso() : undefined,
-            }
-          : current,
-      ),
-    );
-    setMessage(
-      markAsUsed
-        ? `Đã rút ${formatCurrency(entry.amount)} khỏi số dư ví.`
-        : `Đã đưa ${formatCurrency(entry.amount)} trở lại số dư ví.`,
-    );
+    setMessage(`Đã xóa “${item.name}”.`);
   }
 
   function prepareItem(item: SavingsItem, nextMode: SavingsFormMode) {
@@ -2049,7 +2020,6 @@ export default function Home() {
           <p>
             Tìm thấy <strong>{savings.length} khoản Tích lũy</strong>,{
             ' '}<strong>{prosperityItems.length} khoản Phát lộc</strong> và{
-            " "}<strong>{cashLedger.length} giao dịch ví</strong>, cùng{
             " "}<strong>{finance.transactions.length} giao dịch thu chi</strong>. Ứng dụng sẽ
             không tự ghi đè cho đến khi bạn chọn.
           </p>
@@ -2232,7 +2202,6 @@ export default function Home() {
       backupSummary={{
         accounts: finance.accounts.length,
         budgets: finance.budgets.length,
-        cashLedger: cashLedger.length,
         financialGoals: financialGoals.length,
         prosperity: prosperityItems.length,
         savings: savings.length,
@@ -2279,7 +2248,6 @@ export default function Home() {
             onChange={setFinance}
             prosperityValueVnd={prosperityCurrentValue}
             savingsValueVnd={currentPortfolio}
-            walletValueVnd={cashBalance}
             exchangeSettings={exchangeSettings}
             onExchangeSettingsChange={setExchangeSettings}
           />
@@ -2361,9 +2329,6 @@ export default function Home() {
           sortedRates={sortedRates}
         />
         <SavingsOverview
-          cashBalance={cashBalance}
-          cashLedger={cashLedger}
-          onToggleCashEntryStatus={toggleCashEntryStatus}
           savings={savings}
           summary={summary}
           today={today}
