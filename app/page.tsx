@@ -228,6 +228,7 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [mode, setMode] = useState<SavingsFormMode>("add");
   const [depositFormOpen, setDepositFormOpen] = useState(false);
+  const [prosperityEditorOpen, setProsperityEditorOpen] = useState(false);
   const [collapsedRates, setCollapsedRates] = useState<Set<number>>(new Set());
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(
     null,
@@ -1020,7 +1021,10 @@ export default function Home() {
   }
 
   function openWorkspace(workspace: AppWorkspace) {
-    if (workspace !== "savings") closeDepositForm();
+    if (workspace !== "savings") {
+      closeDepositForm();
+      setProsperityEditorOpen(false);
+    }
     setActiveWorkspace(workspace);
   }
 
@@ -2255,6 +2259,9 @@ export default function Home() {
   );
   const savingsEditorOpen =
     activeSavingsProduct === "accumulation" && mode !== "add";
+  const pageSideEditorOpen =
+    savingsEditorOpen ||
+    (activeSavingsProduct === "prosperity" && prosperityEditorOpen);
 
   const fullBackupPanel = (
     <BackupPanel
@@ -2341,7 +2348,7 @@ export default function Home() {
   return (
     <main
       className={`page-shell savings-page-shell${
-        savingsEditorOpen ? " savings-side-editor-open" : ""
+        pageSideEditorOpen ? " savings-side-editor-open" : ""
       }`}
     >
       <div className="app-container">
@@ -2353,6 +2360,7 @@ export default function Home() {
           accumulationPrincipal={summary.principal}
           onChange={(product) => {
             closeDepositForm();
+            setProsperityEditorOpen(false);
             setActiveSavingsProduct(product);
           }}
           prosperityPrincipal={prosperityPrincipal}
@@ -2363,6 +2371,7 @@ export default function Home() {
             accounts={vndAccounts}
             items={prosperityItems}
             onDelete={handleDeleteProsperity}
+            onEditorOpenChange={setProsperityEditorOpen}
             onHarvest={handleHarvestProsperity}
             onOpenFinance={() => openWorkspace("finance")}
             onSave={handleSaveProsperity}

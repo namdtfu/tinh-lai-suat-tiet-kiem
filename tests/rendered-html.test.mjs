@@ -384,6 +384,7 @@ test("includes editable Phát lộc with complete VND funding and harvest flow",
       readFile(new URL("../lib/prosperity.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/finance.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/app-state.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/savings/prosperity.css", import.meta.url), "utf8"),
     ])
   ).join("\n");
 
@@ -401,6 +402,14 @@ test("includes editable Phát lộc with complete VND funding and harvest flow",
   assert.match(source, /INTEREST_DEDUCTION_RATE/);
   assert.match(source, /Thuế lợi nhuận \(5%\)/);
   assert.match(source, /Lợi nhuận ròng dự kiến/);
+  assert.match(source, /const \[formOpen, setFormOpen\]/);
+  assert.match(source, /className='prosperity-command-bar'/);
+  assert.match(source, /'prosperity-modal-backdrop'/);
+  assert.match(source, /'prosperity-side-editor'/);
+  assert.match(source, /pageSideEditorOpen/);
+  assert.match(source, /Thêm khoản Phát lộc/);
+  assert.doesNotMatch(source, /getElementById\('prosperity-form'\)/);
+  assert.match(source, /@media \(max-width: 760px\)[\s\S]*\.prosperity-side-editor/);
 });
 
 test("includes invite-only realtime cloud accounts with per-user database isolation", async () => {

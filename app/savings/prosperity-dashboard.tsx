@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { FinanceAccount } from '@/lib/finance';
 import {
   calculateProsperity,
@@ -48,6 +48,7 @@ export default function ProsperityDashboard({
   items,
   onDelete,
   onHarvest,
+  onEditorOpenChange,
   onOpenFinance,
   onSave,
   today,
@@ -56,12 +57,14 @@ export default function ProsperityDashboard({
   items: ProsperityItem[];
   onDelete: (id: string) => void;
   onHarvest: (id: string) => boolean;
+  onEditorOpenChange: (open: boolean) => void;
   onOpenFinance: () => void;
   onSave: (item: ProsperityItem) => void;
   today: string;
 }) {
   const [form, setForm] = useState<ProsperityForm>(() => createForm(today));
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [message, setMessage] = useState('');
 
   const amount = parseAmount(form.amount);
@@ -144,6 +147,44 @@ export default function ProsperityDashboard({
     setMessage('');
   }
 
+  function closeForm() {
+    setEditingId(null);
+    setForm(createForm(today));
+    setFormOpen(false);
+    setMessage('');
+    onEditorOpenChange(false);
+  }
+
+  function openCreateForm() {
+    setEditingId(null);
+    setForm(createForm(today));
+    setMessage('');
+    setFormOpen(true);
+    onEditorOpenChange(false);
+  }
+
+  useEffect(() => {
+    if (!formOpen && !editingId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    if (formOpen) document.body.style.overflow = 'hidden';
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      setEditingId(null);
+      setForm(createForm(today));
+      setFormOpen(false);
+      setMessage('');
+      onEditorOpenChange(false);
+    }
+
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editingId, formOpen, onEditorOpenChange, today]);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!preview) {
@@ -193,6 +234,8 @@ export default function ProsperityDashboard({
     onSave(item);
     setForm(createForm(today));
     setEditingId(null);
+    setFormOpen(false);
+    onEditorOpenChange(false);
     setMessage(
       existingItem
         ? `Đã lưu thay đổi cho “${item.name}”.`
@@ -202,6 +245,8 @@ export default function ProsperityDashboard({
 
   function startEditing(item: ProsperityItem) {
     setEditingId(item.id);
+    setFormOpen(false);
+    onEditorOpenChange(true);
     setForm({
       amount: formatAmountInput(item.amount),
       annualInterestRate: String(item.annualInterestRate),
@@ -214,15 +259,10 @@ export default function ProsperityDashboard({
       termWeeks: String(item.termWeeks),
     });
     setMessage(`Đang chỉnh sửa “${item.name}”.`);
-    document
-      .getElementById('prosperity-form')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function cancelEditing() {
-    setEditingId(null);
-    setForm(createForm(today));
-    setMessage('Đã hủy chỉnh sửa.');
+    closeForm();
   }
 
   function confirmDelete(item: ProsperityItem) {
@@ -232,6 +272,8 @@ export default function ProsperityDashboard({
       )
     ) {
       onDelete(item.id);
+      if (editingId === item.id) closeForm();
+      setMessage(`Đã xóa “${item.name}”.`);
     }
   }
 
@@ -257,6 +299,31 @@ export default function ProsperityDashboard({
 
   return (
     <div className='prosperity-workspace'>
+      <section className='prosperity-command-bar' aria-label='Thao tác Phát lộc'>
+        <div>
+          <span className='prosperity-kicker'>PHÁT LỘC</span>
+          <strong>Quản lý các khoản đang ươm</strong>
+          <small>Gieo khoản mới ngay tại đây, không cần cuộn qua biểu mẫu dài.</small>
+        </div>
+        <button type='button' onClick={openCreateForm}>
+          <span aria-hidden='true'>＋</span>
+          Thêm khoản Phát lộc
+        </button>
+      </section>
+      {message && !formOpen && !editingId && (
+        <div className='prosperity-page-message' role='status'>
+          <span aria-hidden='true'>✓</span>
+          {message}
+          <button
+            type='button'
+            onClick={() => setMessage('')}
+            aria-label='Đóng thông báo'
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <section className='prosperity-vault' aria-labelledby='prosperity-vault-title'>
         <div className='prosperity-vault-heading'>
           <div>
@@ -292,7 +359,39 @@ export default function ProsperityDashboard({
         </div>
       </section>
 
-      <section className='prosperity-create-card' aria-labelledby='prosperity-create-title'>
+      {(formOpen || editingId) && (
+        <div
+          className={
+            editingId ? 'prosperity-side-editor' : 'prosperity-modal-backdrop'
+          }
+          onMouseDown={(event) => {
+            if (!editingId && event.currentTarget === event.target) closeForm();
+          }}
+        >
+          <div
+            className={
+              editingId
+                ? 'prosperity-side-editor-panel'
+                : 'prosperity-form-modal'
+            }
+            role='dialog'
+            aria-modal={editingId ? undefined : true}
+            aria-label={
+              editingId
+                ? 'Chỉnh sửa khoản Phát lộc'
+                : 'Thêm khoản Phát lộc mới'
+            }
+          >
+            <button
+              type='button'
+              className='prosperity-form-close'
+              onClick={closeForm}
+              aria-label='Đóng biểu mẫu Phát lộc'
+              autoFocus
+            >
+              ×
+            </button>
+            <section className='prosperity-create-card' aria-labelledby='prosperity-create-title'>
         <div className='prosperity-create-copy'>
           <span className='prosperity-kicker'>
             {editingId ? 'CHỈNH SỬA KHOẢN PHÁT LỘC' : 'GIEO MỘT KHOẢN MỚI'}
@@ -396,7 +495,10 @@ export default function ProsperityDashboard({
           <button
             className='prosperity-manage-accounts'
             type='button'
-            onClick={onOpenFinance}
+            onClick={() => {
+              closeForm();
+              onOpenFinance();
+            }}
           >
             {accounts.length ? 'Quản lý tài khoản nguồn và nhận' : 'Tạo tài khoản VND để liên kết'}
           </button>
@@ -517,18 +619,19 @@ export default function ProsperityDashboard({
               <span aria-hidden='true'>{editingId ? '✓' : '＋'}</span>
               {editingId ? 'Lưu thay đổi' : 'Tạo khoản Phát lộc'}
             </button>
-            {editingId && (
-              <button
-                className='prosperity-cancel-edit'
-                type='button'
-                onClick={cancelEditing}
-              >
-                Hủy chỉnh sửa
-              </button>
-            )}
+            <button
+              className='prosperity-cancel-edit'
+              type='button'
+              onClick={cancelEditing}
+            >
+              {editingId ? 'Hủy chỉnh sửa' : 'Hủy'}
+            </button>
           </div>
         </form>
-      </section>
+            </section>
+          </div>
+        </div>
+      )}
 
       <section className='prosperity-list-section' aria-labelledby='prosperity-list-title'>
         <div className='prosperity-list-heading'>
@@ -543,7 +646,7 @@ export default function ProsperityDashboard({
           <div className='prosperity-empty'>
             <span aria-hidden='true'>♧</span>
             <h3>Kho Phát lộc đang trống</h3>
-            <p>Tạo khoản đầu tiên ở biểu mẫu phía trên.</p>
+            <p>Tạo khoản đầu tiên bằng nút “Thêm khoản Phát lộc” phía trên.</p>
           </div>
         ) : (
           <div className='prosperity-list'>
