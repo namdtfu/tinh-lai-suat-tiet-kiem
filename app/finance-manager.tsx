@@ -136,7 +136,7 @@ export default function FinanceManager({
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionToAmount, setTransactionToAmount] = useState("");
   const [transactionAccount, setTransactionAccount] = useState(
-    state.accounts[0]?.id ?? "",
+    state.accounts.find((account) => !account.archived)?.id ?? "",
   );
   const [transactionToAccount, setTransactionToAccount] = useState("");
   const [transactionCategory, setTransactionCategory] = useState("");
@@ -147,6 +147,8 @@ export default function FinanceManager({
   const [accountCurrency, setAccountCurrency] =
     useState<FinanceCurrency>("KRW");
   const [accountOpeningBalance, setAccountOpeningBalance] = useState("");
+  const [accountIncludeInNetWorth, setAccountIncludeInNetWorth] =
+    useState(true);
   const [budgetCategory, setBudgetCategory] = useState("");
   const [budgetCurrency, setBudgetCurrency] =
     useState<FinanceCurrency>(reportingCurrency);
@@ -163,6 +165,11 @@ export default function FinanceManager({
   const [netWorthSettingsOpen, setNetWorthSettingsOpen] = useState(false);
   const [formError, setFormError] = useState("");
   const [actionNotice, setActionNotice] = useState("");
+
+  const activeAccounts = useMemo(
+    () => state.accounts.filter((account) => !account.archived),
+    [state.accounts],
+  );
 
   const summary = useMemo(
     () => summarizeFinanceMonth(state, selectedMonth, reportingCurrency),
@@ -225,6 +232,15 @@ export default function FinanceManager({
       })),
     [state.accounts, state.transactions],
   );
+  const activeAccountBalances = accountBalances.filter(
+    ({ account }) => !account.archived,
+  );
+  const archivedAccountBalances = accountBalances.filter(
+    ({ account }) => account.archived,
+  );
+  const excludedAccountCount = state.accounts.filter(
+    (account) => account.includeInNetWorth === false,
+  ).length;
   const incomeBreakdown = useMemo(
     () =>
       getFinanceCategoryBreakdown(
@@ -318,11 +334,18 @@ export default function FinanceManager({
       : 0;
 
   function openTransaction(type: EditableFinanceTransactionType = "expense") {
+    if (!activeAccounts.length) {
+      setActiveTab("accounts");
+      setActionNotice(
+        "Không còn ví hoạt động. Hãy khôi phục một ví đã lưu trữ hoặc tạo ví mới.",
+      );
+      return;
+    }
     const preferredAccount =
-      state.accounts.find((account) => account.currency === "KRW") ??
-      state.accounts[0];
+      activeAccounts.find((account) => account.currency === "KRW") ??
+      activeAccounts[0];
     const firstAccount = preferredAccount?.id ?? "";
-    const firstOtherAccount = state.accounts.find(
+    const firstOtherAccount = activeAccounts.find(
       (account) => account.id !== firstAccount,
     )?.id;
     setTransactionType(type);
@@ -362,6 +385,15 @@ export default function FinanceManager({
       (item) => item.id === transaction.accountId,
     );
     if (!account) return;
+    const destination = transaction.toAccountId
+      ? state.accounts.find((item) => item.id === transaction.toAccountId)
+      : undefined;
+    if (account.archived || destination?.archived) {
+      setActionNotice(
+        "Giao dịch thuộc ví đã lưu trữ nên đang được đóng băng. Khôi phục ví trước khi chỉnh sửa.",
+      );
+      return;
+    }
     setEditingTransactionId(transaction.id);
     setTransactionType(transaction.type);
     setTransactionCurrency(account.currency);
@@ -392,7 +424,7 @@ export default function FinanceManager({
       setFormError("Số tiền phải lớn hơn 0.");
       return;
     }
-    if (!source || source.currency !== transactionCurrency) {
+    if (!source || source.archived || source.currency !== transactionCurrency) {
       setFormError("Tài khoản nguồn không còn hợp lệ. Hãy chọn lại tài khoản.");
       return;
     }
@@ -406,8 +438,8 @@ export default function FinanceManager({
     const destination = state.accounts.find(
       (account) => account.id === transactionToAccount,
     );
-    if (transactionType === "transfer" && !destination) {
-      setFormError("Tài khoản nhận không còn tồn tại. Hãy chọn lại.");
+    if (transactionType === "transfer" && (!destination || destination.archived)) {
+      setFormError("Tài khoản nhận không còn hoạt động. Hãy chọn lại.");
       return;
     }
     if (transactionType !== "transfer") {
@@ -479,6 +511,13 @@ export default function FinanceManager({
 
   function submitAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const accountBeingEdited = state.accounts.find(
+      (account) => account.id === editingAccountId,
+    );
+    if (accountBeingEdited?.archived) {
+      setFormError("Khôi phục ví trước khi thay đổi thông tin.");
+      return;
+    }
     const name = accountName.trim();
     if (!name) {
       setFormError("Hãy nhập tên tài khoản.");
@@ -503,6 +542,8 @@ export default function FinanceManager({
         type: accountType,
         currency: existingAccount?.currency ?? savedCurrency,
         openingBalance: parseFinanceAmountInput(accountOpeningBalance),
+        archived: existingAccount?.archived ?? false,
+        includeInNetWorth: accountIncludeInNetWorth,
         ...accountVisual,
       };
       return {
@@ -525,6 +566,7 @@ export default function FinanceManager({
     setAccountType("bank");
     setAccountCurrency(reportingCurrency);
     setAccountOpeningBalance("");
+    setAccountIncludeInNetWorth(true);
     setFormError("");
     setAccountOpen(true);
   }
@@ -537,6 +579,7 @@ export default function FinanceManager({
     setAccountType(account.type);
     setAccountCurrency(account.currency);
     setAccountOpeningBalance(formatFinanceAmountInput(account.openingBalance));
+    setAccountIncludeInNetWorth(account.includeInNetWorth !== false);
     setFormError("");
     setAccountOpen(true);
   }
@@ -545,8 +588,26 @@ export default function FinanceManager({
     setEditingAccountId("");
     setAccountName("");
     setAccountOpeningBalance("");
+    setAccountIncludeInNetWorth(true);
     setFormError("");
     setAccountOpen(false);
+  }
+
+  function setAccountArchived(accountId: string, archived: boolean) {
+    const account = state.accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    onChange((current) => ({
+      ...current,
+      accounts: current.accounts.map((item) =>
+        item.id === accountId ? { ...item, archived } : item,
+      ),
+    }));
+    setActionNotice(
+      archived
+        ? `Đã lưu trữ “${account.name}”. Số dư và lịch sử được giữ nguyên.`
+        : `Đã khôi phục “${account.name}”. Ví có thể phát sinh giao dịch mới.`,
+    );
+    closeAccount();
   }
 
   function deleteAccount(accountId: string) {
@@ -975,7 +1036,7 @@ export default function FinanceManager({
             <button type="button" onClick={() => setNetWorthSettingsOpen((current) => !current)}>{netWorthSettingsOpen ? "Đóng cấu hình" : "Cấu hình quy đổi"}</button>
           </div>
           <div className={styles.netWorthGrid}>
-            <article><span>Tài khoản & tiền mặt</span><strong>{formatMoney(netWorth.liquidInBase, netWorth.baseCurrency)}</strong><small>{formatMoney(netWorth.accountKrw, "KRW")} · {formatMoney(netWorth.accountVnd, "VND")}</small></article>
+            <article><span>Tài khoản & tiền mặt</span><strong>{formatMoney(netWorth.liquidInBase, netWorth.baseCurrency)}</strong><small>{formatMoney(netWorth.accountKrw, "KRW")} · {formatMoney(netWorth.accountVnd, "VND")}{excludedAccountCount ? ` · ${excludedAccountCount} ví không tính vào tổng` : ""}</small></article>
             <article><span>Khoản tiết kiệm</span><strong>{formatMoney(netWorth.savingsInBase, netWorth.baseCurrency)}</strong><small>Giá trị hiện tại gồm lãi tích lũy</small></article>
             <article><span>Phát lộc đang ươm</span><strong>{formatMoney(netWorth.prosperityInBase, netWorth.baseCurrency)}</strong><small>Gốc và lãi ròng tạm tính sau thuế</small></article>
             <article className={styles.netWorthTotal}><span>Tài sản ròng</span><strong>{formatMoney(netWorth.totalInBase, netWorth.baseCurrency)}</strong><small>Theo tỷ giá đã lưu</small></article>
@@ -1034,13 +1095,16 @@ export default function FinanceManager({
               <button type="button" onClick={() => setActiveTab("accounts")}>Xem tất cả</button>
             </div>
             <div className={styles.accountList}>
-              {accountBalances.slice(0, 4).map(({ account, balance }) => (
+              {activeAccountBalances.slice(0, 4).map(({ account, balance }) => (
                 <div key={account.id} className={styles.accountRow}>
                   <span className={styles.roundIcon} style={{ background: `${account.color}20`, color: account.color }}>{account.icon}</span>
-                  <div><strong>{account.name}</strong><small>{accountTypeLabels[account.type]} · {account.currency}</small></div>
+                  <div><strong>{account.name}</strong><small>{accountTypeLabels[account.type]} · {account.currency}{account.includeInNetWorth === false ? " · Không tính vào tổng" : ""}</small></div>
                   <b>{formatMoney(balance, account.currency)}</b>
                 </div>
               ))}
+              {!activeAccountBalances.length && (
+                <p className={styles.accountListEmpty}>Không có ví đang hoạt động.</p>
+              )}
             </div>
           </article>
 
@@ -1301,13 +1365,28 @@ export default function FinanceManager({
             <button className={styles.compactAction} type="button" onClick={openNewAccount}>＋ Thêm tài khoản</button>
           </div>
           <div className={styles.accountCards}>
-            {accountBalances.map(({ account, balance }) => (
+            {activeAccountBalances.map(({ account, balance }) => (
               <div key={account.id} className={styles.accountCard} style={{ borderTopColor: account.color }}>
                 <span className={styles.roundIcon} style={{ background: `${account.color}20`, color: account.color }}>{account.icon}</span>
-                <div className={styles.accountCardMain}><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b></div>
+                <div className={styles.accountCardMain}><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b>{account.includeInNetWorth === false && <em className={styles.accountStateBadge}>Không tính vào tổng</em>}</div>
                 <div className={styles.accountActions}>
                   <button className={styles.editButton} type="button" onClick={() => editAccount(account.id)} aria-label={`Sửa tài khoản ${account.name}`}>✎</button>
                   <button className={styles.deleteButton} type="button" onClick={() => deleteAccount(account.id)} aria-label={`Xóa tài khoản ${account.name}`}>×</button>
+                </div>
+              </div>
+            ))}
+            {archivedAccountBalances.length > 0 && (
+              <div className={styles.archivedAccountsHeading}>
+                <span>VÍ ĐÃ LƯU TRỮ</span>
+                <small>Đang đóng băng, không thể phát sinh giao dịch mới</small>
+              </div>
+            )}
+            {archivedAccountBalances.map(({ account, balance }) => (
+              <div key={account.id} className={`${styles.accountCard} ${styles.archivedAccountCard}`} style={{ borderTopColor: account.color }}>
+                <span className={styles.roundIcon} style={{ background: `${account.color}20`, color: account.color }}>{account.icon}</span>
+                <div className={styles.accountCardMain}><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b><em className={styles.accountStateBadge}>{account.includeInNetWorth === false ? "Đã lưu trữ · Không tính vào tổng" : "Đã lưu trữ"}</em></div>
+                <div className={styles.accountActions}>
+                  <button className={styles.editButton} type="button" onClick={() => editAccount(account.id)} aria-label={`Quản lý ví đã lưu trữ ${account.name}`}>✎</button>
                 </div>
               </div>
             ))}
@@ -1317,7 +1396,7 @@ export default function FinanceManager({
 
       <TransactionDialog
         account={transactionAccount}
-        accounts={state.accounts}
+        accounts={activeAccounts}
         amount={transactionAmount}
         categories={state.categories}
         category={transactionCategory}
@@ -1356,14 +1435,21 @@ export default function FinanceManager({
         type={transactionType}
       />
       <AccountDialog
+        archived={Boolean(
+          state.accounts.find((account) => account.id === editingAccountId)
+            ?.archived,
+        )}
         currency={accountCurrency}
         editingId={editingAccountId}
         formError={formError}
+        includeInNetWorth={accountIncludeInNetWorth}
         name={accountName}
+        onArchive={setAccountArchived}
         onBalanceChange={setAccountOpeningBalance}
         onClose={closeAccount}
         onCurrencyChange={setAccountCurrency}
         onDelete={deleteAccount}
+        onIncludeInNetWorthChange={setAccountIncludeInNetWorth}
         onNameChange={setAccountName}
         onSubmit={submitAccount}
         onTypeChange={setAccountType}

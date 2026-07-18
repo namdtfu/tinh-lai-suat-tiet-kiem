@@ -1371,6 +1371,54 @@
   margin-left: auto;
 }
 
+.accountStateBadge {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 4px 7px;
+  color: #795f23;
+  background: #fff7df;
+  border: 1px solid #ead9a7;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.archivedAccountsHeading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 14px 2px 0;
+  border-top: 1px dashed #dcd5e2;
+}
+
+.archivedAccountsHeading span {
+  color: #796f82;
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+}
+
+.archivedAccountsHeading small,
+.accountListEmpty {
+  color: #938b9b;
+  font-size: 0.66rem;
+}
+
+.archivedAccountCard {
+  background: #f2f1f3;
+  border-color: #dfdce2;
+  filter: saturate(0.55);
+}
+
+.accountListEmpty {
+  padding: 24px 0;
+  text-align: center;
+}
+
 .modalBackdrop {
   position: fixed;
   z-index: 50;
@@ -1612,6 +1660,76 @@
 
 .formHint {
   margin-top: 10px;
+}
+
+.accountTotalToggle {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 10px !important;
+  margin-top: 15px;
+  padding: 13px;
+  background: #f7f4fb;
+  border: 1px solid #e3dceb;
+  border-radius: 11px;
+}
+
+.modal .accountTotalToggle input {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 2px;
+  padding: 0;
+  accent-color: #6f4bd8;
+}
+
+.accountTotalToggle span,
+.accountTotalToggle strong,
+.accountTotalToggle small {
+  display: block;
+}
+
+.accountTotalToggle strong {
+  color: #493e54;
+  font-size: 0.73rem;
+}
+
+.accountTotalToggle small {
+  margin-top: 3px;
+  color: #817687;
+  font-size: 0.64rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.accountModalActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.accountModalActions > .saveButton {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.accountModalActions > .archiveAction:only-child,
+.accountModalActions > .dangerAction:only-child {
+  grid-column: 1 / -1;
+}
+
+.archiveAction {
+  min-height: 44px;
+  padding: 0 13px;
+  color: #67567b;
+  background: #f4f0f8;
+  border: 1px solid #ddd2e8;
+  border-radius: 9px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.accountModalActions > .dangerAction {
+  min-height: 44px;
 }
 
 .twoSegments {

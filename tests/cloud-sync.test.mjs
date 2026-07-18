@@ -77,6 +77,8 @@ test("full backup payload preserves every application data section", () => {
     status: "active",
   });
   core.finance.accounts[0].openingBalance = 1_000_000;
+  core.finance.accounts[0].archived = true;
+  core.finance.accounts[0].includeInNetWorth = false;
   const payload = createBackupPayload(
     core,
     [],
@@ -92,6 +94,8 @@ test("full backup payload preserves every application data section", () => {
   assert.deepEqual(parsed.prosperity, []);
   assert.deepEqual(parsed.cashLedger, []);
   assert.equal(parsed.finance.accounts[0].openingBalance, 1_000_000);
+  assert.equal(parsed.finance.accounts[0].archived, true);
+  assert.equal(parsed.finance.accounts[0].includeInNetWorth, false);
   assert.deepEqual(parsed.financialGoals, []);
   assert.deepEqual(parsed.versionHistory, []);
 });

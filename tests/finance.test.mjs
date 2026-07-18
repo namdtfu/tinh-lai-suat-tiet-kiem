@@ -786,6 +786,64 @@ test("net worth converts KRW accounts and combines liquid cash with savings", ()
   assert.equal(snapshot.totalInBase, 580_000);
 });
 
+test("an excluded wallet keeps its own balance while staying out of aggregate assets", () => {
+  const excludedWallet = {
+    ...vndBank,
+    id: "vnd-reserve",
+    includeInNetWorth: false,
+  };
+  const excludedIncome = transaction({
+    id: "excluded-income",
+    type: "income",
+    amount: 25_000,
+    accountId: excludedWallet.id,
+    categoryId: "income-other",
+  });
+  const finance = {
+    accounts: [krwCash, excludedWallet],
+    categories: [],
+    transactions: [excludedIncome],
+    budgets: [],
+    budgetPlans: [],
+  };
+  const snapshot = calculateNetWorth(
+    finance,
+    0,
+    { baseCurrency: "VND", krwToVndRate: 20, source: "actual", updatedAt: "" },
+  );
+
+  assert.equal(calculateAccountBalance(excludedWallet, finance.transactions), 125_000);
+  assert.equal(snapshot.liquidInBase, 200_000);
+  assert.equal(snapshot.totalInBase, 200_000);
+});
+
+test("archive state and total inclusion are independent and backward compatible", () => {
+  const normalized = normalizeFinanceState({
+    accounts: [
+      { ...krwCash, archived: true },
+      { ...vndBank, includeInNetWorth: false },
+    ],
+    categories: [],
+    transactions: [],
+    budgets: [],
+    budgetPlans: [],
+  });
+  const archived = normalized.accounts.find((account) => account.id === krwCash.id);
+  const excluded = normalized.accounts.find((account) => account.id === vndBank.id);
+
+  assert.equal(archived?.archived, true);
+  assert.equal(archived?.includeInNetWorth, true);
+  assert.equal(excluded?.archived, false);
+  assert.equal(excluded?.includeInNetWorth, false);
+
+  const archivedSnapshot = calculateNetWorth(
+    { ...normalized, accounts: [archived] },
+    0,
+    { baseCurrency: "VND", krwToVndRate: 20, source: "actual", updatedAt: "" },
+  );
+  assert.equal(archivedSnapshot.liquidInBase, 200_000);
+});
+
 test("net worth stays continuous when Phát lộc moves out of and back into an account", () => {
   const settings = {
     baseCurrency: "VND",

@@ -18,6 +18,8 @@ export type FinanceAccount = {
   openingBalance: number;
   color: string;
   icon: string;
+  archived?: boolean;
+  includeInNetWorth?: boolean;
 };
 
 export type FinanceCategory = {
@@ -211,6 +213,8 @@ export function createDefaultFinanceState(): FinanceState {
         openingBalance: 0,
         color: "#27a77b",
         icon: "₩",
+        archived: false,
+        includeInNetWorth: true,
       },
     ],
     categories: DEFAULT_FINANCE_CATEGORIES.map((category) => ({ ...category })),
@@ -265,6 +269,9 @@ function normalizeAccount(value: unknown): FinanceAccount | null {
     openingBalance,
     color: cleanText(value.color, "#6f4bd8", 20),
     icon: cleanText(value.icon, "💳", 12),
+    archived: value.archived === true,
+    // Dữ liệu cũ chưa có trường này luôn được tính vào tổng như trước đây.
+    includeInNetWorth: value.includeInNetWorth !== false,
   };
 }
 
@@ -776,7 +783,10 @@ export function calculateTotalBalance(
   currency: FinanceCurrency,
 ) {
   return state.accounts
-    .filter((account) => account.currency === currency)
+    .filter(
+      (account) =>
+        account.currency === currency && account.includeInNetWorth !== false,
+    )
     .reduce(
       (total, account) =>
         total + calculateAccountBalance(account, state.transactions),
@@ -1155,7 +1165,9 @@ export function hasMeaningfulFinanceData(state: FinanceState) {
       state.accounts.some(
         (account) =>
           !["account-cash", "account-krw-cash"].includes(account.id) ||
-          account.openingBalance !== 0,
+          account.openingBalance !== 0 ||
+          account.archived === true ||
+          account.includeInNetWorth === false,
       ),
   );
 }

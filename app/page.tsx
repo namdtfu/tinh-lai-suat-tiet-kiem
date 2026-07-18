@@ -854,7 +854,10 @@ export default function Home() {
     [activeProsperityItems],
   );
   const vndAccounts = useMemo(
-    () => finance.accounts.filter((account) => account.currency === "VND"),
+    () =>
+      finance.accounts.filter(
+        (account) => account.currency === "VND" && !account.archived,
+      ),
     [finance.accounts],
   );
 
@@ -1099,6 +1102,16 @@ export default function Home() {
       (account) => account.id === form.settlementAccountId,
     );
     if (
+      (mode === "add" || mode === "edit") &&
+      form.fundingAccountId &&
+      !hasFundingAccount
+    ) {
+      setMessage(
+        "Tài khoản nguồn đã được lưu trữ hoặc không còn tồn tại. Hãy chọn một tài khoản VND đang hoạt động.",
+      );
+      return;
+    }
+    if (
       mode === "reinvest" &&
       additionalContribution > 0 &&
       !hasFundingAccount
@@ -1159,7 +1172,8 @@ export default function Home() {
         const account = current.accounts.find(
           (candidate) =>
             candidate.id === item.fundingAccountId &&
-            candidate.currency === "VND",
+            candidate.currency === "VND" &&
+            !candidate.archived,
         );
         if (!account) return { ...current, transactions };
         const historicalEntry =
@@ -1196,12 +1210,14 @@ export default function Home() {
           const fundingAccount = current.accounts.find(
             (account) =>
               account.id === item.fundingAccountId &&
-              account.currency === "VND",
+              account.currency === "VND" &&
+              !account.archived,
           );
           const settlementAccount = current.accounts.find(
             (account) =>
               account.id === item.settlementAccountId &&
-              account.currency === "VND",
+              account.currency === "VND" &&
+              !account.archived,
           );
           if (additionalContribution > 0 && fundingAccount) {
             nextTransactions.unshift(
@@ -1313,7 +1329,8 @@ export default function Home() {
       const account = current.accounts.find(
         (candidate) =>
           candidate.id === settlementDraft.accountId &&
-          candidate.currency === "VND",
+          candidate.currency === "VND" &&
+          !candidate.archived,
       );
       if (!account) return { ...current, transactions };
       return {
@@ -1367,7 +1384,8 @@ export default function Home() {
       const account = current.accounts.find(
         (candidate) =>
           candidate.id === item.fundingAccountId &&
-          candidate.currency === "VND",
+          candidate.currency === "VND" &&
+          !candidate.archived,
       );
       if (!account) return { ...current, transactions };
 
@@ -1402,12 +1420,14 @@ export default function Home() {
       finance.accounts.find(
         (account) =>
           account.id === item.settlementAccountId &&
-          account.currency === 'VND',
+          account.currency === 'VND' &&
+          !account.archived,
       ) ??
       finance.accounts.find(
         (account) =>
           account.id === item.fundingAccountId &&
-          account.currency === 'VND',
+          account.currency === 'VND' &&
+          !account.archived,
       );
     if (!settlementAccount) return false;
 

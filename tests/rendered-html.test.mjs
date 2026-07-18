@@ -299,6 +299,12 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Tỷ giá thực tế/);
   assert.match(manager, /inputMode="decimal"/);
   assert.match(manager, /parseExchangeRateInput/);
+  assert.match(manager, /Tính số dư vào tổng tài sản/);
+  assert.match(manager, /Không tính vào tổng/);
+  assert.match(manager, /Lưu trữ ví/);
+  assert.match(manager, /Khôi phục ví/);
+  assert.match(manager, /Ví đang được đóng băng/);
+  assert.match(manager, /activeAccounts/);
   assert.match(manager, /ĐƠN VỊ NHẬP/);
   assert.match(manager, /useState<FinanceCurrency>\("KRW"\)/);
   assert.match(manager, /formatFinanceAmountInput\(event\.target\.value\)/);
@@ -319,6 +325,9 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /Báo cáo theo nhóm/);
   assert.match(manager, /Trung bình chi 3 tháng trước/);
   assert.match(finance, /function calculateAccountBalance/);
+  assert.match(finance, /archived\?: boolean/);
+  assert.match(finance, /includeInNetWorth\?: boolean/);
+  assert.match(finance, /account\.includeInNetWorth !== false/);
   assert.match(finance, /function saveFinanceTransaction/);
   assert.match(finance, /function formatFinanceAmountInput/);
   assert.match(finance, /transaction\.toAccountId === account\.id/);
@@ -341,6 +350,7 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(finance, /function saveFinanceAccount/);
   assert.match(finance, /function deleteFinanceAccount/);
   assert.match(finance, /function normalizeFinanceState/);
+  assert.match(page, /account\.currency === "VND" && !account\.archived/);
 });
 
 test("includes linked savings lifecycle, settlement, and action reminders", async () => {
