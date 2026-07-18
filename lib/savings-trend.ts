@@ -119,3 +119,32 @@ export function buildSavingsTrend(
     };
   });
 }
+
+export function buildDailySavingsTrend(
+  savings: SavingsTrendItem[],
+  startDate: string,
+  endDate: string,
+): SavingsTrendPoint[] {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    start > end
+  ) {
+    return [];
+  }
+
+  const dayCount =
+    Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  return Array.from({ length: dayCount }, (_, index) => {
+    const snapshotDate = toIsoDate(
+      new Date(start.getTime() + index * 86_400_000),
+    );
+    return {
+      ...getSavingsTrendSnapshot(savings, snapshotDate),
+      date: snapshotDate,
+      key: snapshotDate,
+    };
+  });
+}

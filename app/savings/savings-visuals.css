@@ -74,6 +74,76 @@
   font-weight: 750;
 }
 
+.savings-trend-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.savings-trend-ranges,
+.savings-trend-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid #dce7e2;
+  border-radius: 10px;
+}
+
+.savings-trend-ranges button,
+.savings-trend-zoom button {
+  min-height: 34px;
+  padding: 0 11px;
+  color: #706a76;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font-size: 0.7rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.savings-trend-ranges button:hover,
+.savings-trend-zoom button:hover:not(:disabled) {
+  color: #176f52;
+  background: #e8f5ef;
+}
+
+.savings-trend-ranges button.active {
+  color: #fff;
+  background: var(--trend-color);
+  box-shadow: 0 5px 12px rgba(19, 123, 87, 0.2);
+}
+
+.savings-trend-ranges button:focus-visible,
+.savings-trend-zoom button:focus-visible,
+.savings-trend-navigator input:focus-visible {
+  outline: 3px solid rgba(111, 75, 216, 0.2);
+  outline-offset: 1px;
+}
+
+.savings-trend-zoom button {
+  width: 34px;
+  padding: 0;
+  font-size: 1rem;
+}
+
+.savings-trend-zoom button:disabled {
+  color: #b8b3bb;
+  cursor: not-allowed;
+}
+
+.savings-trend-zoom > span {
+  min-width: 64px;
+  color: #6f6875;
+  font-size: 0.66rem;
+  font-weight: 750;
+  text-align: center;
+}
+
 .savings-trend-plot {
   position: relative;
   min-height: 220px;
@@ -198,6 +268,54 @@
 .savings-trend-empty > span {
   color: var(--violet);
   font-size: 1.15rem;
+}
+
+.savings-trend-navigator {
+  display: grid;
+  grid-template-columns: auto minmax(100px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 14px;
+  padding: 9px 12px;
+  color: #817b86;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid #e0e8e4;
+  border-radius: 10px;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.savings-trend-navigator input {
+  width: 100%;
+  accent-color: var(--trend-color);
+  cursor: ew-resize;
+}
+
+@media (max-width: 720px) {
+  .savings-trend-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .savings-trend-ranges {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .savings-trend-ranges button { padding: 0 7px; }
+  .savings-trend-zoom { align-self: flex-start; }
+}
+
+@media (max-width: 420px) {
+  .savings-trend-ranges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .savings-trend-navigator {
+    grid-template-columns: 1fr 1fr;
+  }
+  .savings-trend-navigator input {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .savings-trend-navigator span:last-child { text-align: right; }
 }
 
 .savings-trend-detail {

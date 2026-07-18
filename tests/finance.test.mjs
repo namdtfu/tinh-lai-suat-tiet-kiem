@@ -25,6 +25,7 @@ import {
   parseExchangeRateInput,
 } from "../lib/planning.ts";
 import {
+  buildDailySavingsTrend,
   buildSavingsTrend,
   getSavingsTrendSnapshot,
 } from "../lib/savings-trend.ts";
@@ -680,6 +681,19 @@ test("builds exactly 12 month-end savings trend points ending today", () => {
   assert.equal(trend[0].date, "2025-08-31");
   assert.equal(trend[10].date, "2026-06-30");
   assert.equal(trend[11].date, "2026-07-16");
+});
+
+test("builds daily savings points for stock-style chart ranges", () => {
+  const trend = buildDailySavingsTrend([], "2026-07-10", "2026-07-16");
+
+  assert.equal(trend.length, 7);
+  assert.equal(trend[0].key, "2026-07-10");
+  assert.equal(trend[0].date, "2026-07-10");
+  assert.equal(trend[6].key, "2026-07-16");
+  assert.deepEqual(
+    buildDailySavingsTrend([], "2026-07-17", "2026-07-16"),
+    [],
+  );
 });
 
 test("savings trend follows reinvested cycles without double counting maturity", () => {
