@@ -235,6 +235,12 @@ export default function FinanceManager({
   const activeAccountBalances = accountBalances.filter(
     ({ account }) => !account.archived,
   );
+  const includedActiveAccountBalances = activeAccountBalances.filter(
+    ({ account }) => account.includeInNetWorth !== false,
+  );
+  const excludedActiveAccountBalances = activeAccountBalances.filter(
+    ({ account }) => account.includeInNetWorth === false,
+  );
   const archivedAccountBalances = accountBalances.filter(
     ({ account }) => account.archived,
   );
@@ -1365,10 +1371,32 @@ export default function FinanceManager({
             <button className={styles.compactAction} type="button" onClick={openNewAccount}>＋ Thêm tài khoản</button>
           </div>
           <div className={styles.accountCards}>
-            {activeAccountBalances.map(({ account, balance }) => (
+            {includedActiveAccountBalances.length > 0 && (
+              <div className={`${styles.accountGroupHeading} ${styles.includedAccountsHeading}`}>
+                <span>TÍNH VÀO TỔNG TÀI SẢN</span>
+                <small>{includedActiveAccountBalances.length} ví · Được cộng vào tài sản thanh khoản và tài sản ròng</small>
+              </div>
+            )}
+            {includedActiveAccountBalances.map(({ account, balance }) => (
               <div key={account.id} className={styles.accountCard} style={{ borderTopColor: account.color }}>
                 <span className={styles.roundIcon} style={{ background: `${account.color}20`, color: account.color }}>{account.icon}</span>
-                <div className={styles.accountCardMain}><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b>{account.includeInNetWorth === false && <em className={styles.accountStateBadge}>Không tính vào tổng</em>}</div>
+                <div className={styles.accountCardMain}><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b></div>
+                <div className={styles.accountActions}>
+                  <button className={styles.editButton} type="button" onClick={() => editAccount(account.id)} aria-label={`Sửa tài khoản ${account.name}`}>✎</button>
+                  <button className={styles.deleteButton} type="button" onClick={() => deleteAccount(account.id)} aria-label={`Xóa tài khoản ${account.name}`}>×</button>
+                </div>
+              </div>
+            ))}
+            {excludedActiveAccountBalances.length > 0 && (
+              <div className={`${styles.accountGroupHeading} ${styles.excludedAccountsHeading}`}>
+                <span>KHÔNG TÍNH VÀO TỔNG</span>
+                <small>{excludedActiveAccountBalances.length} ví · Chỉ theo dõi riêng, không cộng vào tài sản thanh khoản và tài sản ròng</small>
+              </div>
+            )}
+            {excludedActiveAccountBalances.map(({ account, balance }) => (
+              <div key={account.id} className={`${styles.accountCard} ${styles.excludedAccountCard}`} style={{ borderTopColor: account.color }}>
+                <span className={styles.roundIcon} style={{ background: `${account.color}20`, color: account.color }}>{account.icon}</span>
+                <div className={styles.accountCardMain}><small>{accountTypeLabels[account.type]} · {account.currency}</small><strong>{account.name}</strong><b>{formatMoney(balance, account.currency)}</b><em className={styles.accountStateBadge}>Không tính vào tổng</em></div>
                 <div className={styles.accountActions}>
                   <button className={styles.editButton} type="button" onClick={() => editAccount(account.id)} aria-label={`Sửa tài khoản ${account.name}`}>✎</button>
                   <button className={styles.deleteButton} type="button" onClick={() => deleteAccount(account.id)} aria-label={`Xóa tài khoản ${account.name}`}>×</button>

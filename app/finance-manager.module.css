@@ -1384,6 +1384,54 @@
   font-weight: 800;
 }
 
+.accountGroupHeading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 18px;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 11px;
+  flex-wrap: wrap;
+}
+
+.accountGroupHeading span {
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.accountGroupHeading small {
+  font-size: 0.65rem;
+  font-weight: 650;
+}
+
+.includedAccountsHeading {
+  color: #27624e;
+  background: #eef8f4;
+  border-color: #c9e7db;
+}
+
+.includedAccountsHeading small {
+  color: #5e7e72;
+}
+
+.excludedAccountsHeading {
+  margin-top: 8px;
+  color: #795f23;
+  background: #fff8e6;
+  border-color: #ead9a7;
+}
+
+.excludedAccountsHeading small {
+  color: #8b784b;
+}
+
+.excludedAccountCard {
+  background: #fffcf3;
+}
+
 .archivedAccountsHeading {
   grid-column: 1 / -1;
   display: flex;

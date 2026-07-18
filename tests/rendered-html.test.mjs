@@ -301,6 +301,10 @@ test("includes a separate income and expense management workspace", async () => 
   assert.match(manager, /parseExchangeRateInput/);
   assert.match(manager, /Tính số dư vào tổng tài sản/);
   assert.match(manager, /Không tính vào tổng/);
+  assert.match(manager, /TÍNH VÀO TỔNG TÀI SẢN/);
+  assert.match(manager, /KHÔNG TÍNH VÀO TỔNG/);
+  assert.match(manager, /includedActiveAccountBalances/);
+  assert.match(manager, /excludedActiveAccountBalances/);
   assert.match(manager, /Lưu trữ ví/);
   assert.match(manager, /Khôi phục ví/);
   assert.match(manager, /Ví đang được đóng băng/);
