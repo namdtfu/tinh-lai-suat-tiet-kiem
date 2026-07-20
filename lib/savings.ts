@@ -93,6 +93,13 @@ export function createEmptySavingsForm(startDate = ""): SavingsForm {
   };
 }
 
+export function sortSavingsNewestFirst(items: SavingsItem[]) {
+  return [...items].sort(
+    (left, right) =>
+      right.startDate.localeCompare(left.startDate) || right.id - left.id,
+  );
+}
+
 export function getTodayIso() {
   const today = new Date();
   const offset = today.getTimezoneOffset() * 60_000;

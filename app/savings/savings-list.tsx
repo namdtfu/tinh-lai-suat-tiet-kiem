@@ -9,6 +9,7 @@ import {
   formatDate,
   formatRate,
   getTermProgress,
+  sortSavingsNewestFirst,
   type SavingsCycle,
   type SavingsItem,
 } from "@/lib/savings";
@@ -48,7 +49,7 @@ export default function SavingsList({
   const settledSavingsCount = savings.length - activeSavings.length;
   const groupedSavings = useMemo(() => {
     const groups = new Map<number, SavingsItem[]>();
-    savings.forEach((item) => {
+    sortSavingsNewestFirst(savings).forEach((item) => {
       const group = groups.get(item.interestRate) ?? [];
       group.push(item);
       groups.set(item.interestRate, group);

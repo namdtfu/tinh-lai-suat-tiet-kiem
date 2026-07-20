@@ -29,6 +29,7 @@ import {
   buildSavingsTrend,
   getSavingsTrendSnapshot,
 } from "../lib/savings-trend.ts";
+import { sortSavingsNewestFirst } from "../lib/savings.ts";
 
 test("amount inputs add Vietnamese thousand separators while keeping numeric value", () => {
   assert.equal(formatFinanceAmountInput("1"), "1");
@@ -47,6 +48,20 @@ test("exchange-rate inputs accept decimal dots and commas", () => {
   assert.equal(parseExchangeRateInput("18.5678"), 18.5678);
   assert.equal(parseExchangeRateInput("18.56789"), null);
   assert.equal(parseExchangeRateInput("abc"), null);
+});
+
+test("savings are displayed by newest start date without mutating stored order", () => {
+  const savings = [
+    { id: 1, startDate: "2026-05-10" },
+    { id: 2, startDate: "2026-07-20" },
+    { id: 3, startDate: "2026-07-20" },
+  ];
+
+  assert.deepEqual(
+    sortSavingsNewestFirst(savings).map((item) => item.id),
+    [3, 2, 1],
+  );
+  assert.deepEqual(savings.map((item) => item.id), [1, 2, 3]);
 });
 
 test("editing a budget replaces its old values without creating a duplicate", () => {

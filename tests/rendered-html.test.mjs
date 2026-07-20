@@ -396,6 +396,8 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
   assert.match(page, /Không kỳ hạn/);
   assert.match(page, /Rút bất cứ lúc nào, thuế 5% trên tiền lãi/);
   assert.match(page, /item\.termType === "open-ended"/);
+  assert.match(page, /sortSavingsNewestFirst\(savings\)/);
+  assert.match(page, /sort\(\(\[rateA\], \[rateB\]\) => rateB - rateA\)/);
 });
 
 test("includes editable Phát lộc with complete VND funding and harvest flow", async () => {
