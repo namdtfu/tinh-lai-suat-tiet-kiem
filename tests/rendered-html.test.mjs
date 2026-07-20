@@ -398,6 +398,13 @@ test("includes linked savings lifecycle, settlement, and action reminders", asyn
   assert.match(page, /item\.termType === "open-ended"/);
   assert.match(page, /sortSavingsNewestFirst\(savings\)/);
   assert.match(page, /sort\(\(\[rateA\], \[rateB\]\) => rateB - rateA\)/);
+  assert.match(page, /expandedItemIds\.has\(item\.id\)/);
+  assert.match(page, /className="item-disclosure-toggle"/);
+  assert.match(page, /readOnly=\{!isItemExpanded\}/);
+  assert.match(page, /Lãi ròng đến hôm nay/);
+  assert.match(page, /hidden=\{!isItemExpanded\}/);
+  assert.match(page, /aria-controls=\{`savings-item-details-\$\{item\.id\}`\}/);
+  assert.match(page, /isItemExpanded \? "expanded" : "collapsed"/);
 });
 
 test("includes editable Phát lộc with complete VND funding and harvest flow", async () => {

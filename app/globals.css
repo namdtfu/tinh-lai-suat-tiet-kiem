@@ -1779,9 +1779,53 @@ button {
   background: #fff;
 }
 
+.savings-item.collapsed {
+  padding: 13px 18px;
+}
+
+.savings-item.collapsed .savings-item-header {
+  margin-bottom: 0;
+}
+
+.savings-item.collapsed > .savings-item-body {
+  display: none;
+}
+
+.savings-item.collapsed .item-name-section label,
+.savings-item.collapsed .item-status-line,
+.savings-item.collapsed .item-actions {
+  display: none;
+}
+
+.savings-item.expanded .item-compact-metric {
+  display: none;
+}
+
 .savings-item-header {
   gap: 18px;
   margin-bottom: 18px;
+}
+
+.savings-item-disclosure-header {
+  cursor: pointer;
+}
+
+.item-disclosure-toggle {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--violet-deep);
+  background: #f0ebfa;
+  border: 1px solid #ddd3f0;
+  border-radius: 50%;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.item-disclosure-toggle:hover {
+  background: #e7ddf8;
 }
 
 .item-name-section {
@@ -1826,6 +1870,40 @@ button {
 
 .item-amount strong {
   font-size: 1.06rem;
+}
+
+.item-compact-metric {
+  min-width: 118px;
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.item-compact-metric span,
+.item-compact-metric strong {
+  display: block;
+}
+
+.item-compact-metric span {
+  margin-bottom: 5px;
+  color: #8c8593;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.item-compact-metric strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.item-compact-profit {
+  min-width: 160px;
+}
+
+.item-compact-profit strong {
+  color: #147653;
+  font-size: 1.02rem;
 }
 
 .item-actions {
@@ -2587,6 +2665,11 @@ footer {
 
 .item-status-line small { color: var(--muted); font-size: 0.7rem; }
 
+.item-status-line .item-start-date {
+  color: #675b72;
+  font-weight: 750;
+}
+
 .status-badge {
   padding: 4px 7px;
   border-radius: 999px;
@@ -3208,6 +3291,18 @@ footer {
 
   .btn-reinvest {
     grid-column: span 2;
+  }
+
+  .savings-item-disclosure-header .item-name-section {
+    width: calc(100% - 52px);
+    flex-basis: auto;
+  }
+
+  .savings-item.collapsed .item-amount,
+  .savings-item.collapsed .item-compact-metric {
+    min-width: 105px;
+    flex: 1 1 calc(33.333% - 12px);
+    text-align: left;
   }
 
   .savings-details {

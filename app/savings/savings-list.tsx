@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { FinanceAccount } from "@/lib/finance";
 import {
   calculateAccruedInterest,
@@ -42,6 +42,9 @@ export default function SavingsList({
   savings: SavingsItem[];
   today: string;
 }) {
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const activeSavings = useMemo(
     () => savings.filter((item) => item.status !== "settled"),
     [savings],
@@ -56,6 +59,15 @@ export default function SavingsList({
     });
     return [...groups.entries()].sort(([rateA], [rateB]) => rateB - rateA);
   }, [savings]);
+
+  function toggleItemDetails(id: number) {
+    setExpandedItemIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
         <section className="list-section" aria-labelledby="list-title">
@@ -161,6 +173,7 @@ export default function SavingsList({
                             item.termType === "open-ended";
                           const isHistoryExpanded =
                             expandedHistoryId === item.id;
+                          const isItemExpanded = expandedItemIds.has(item.id);
                           const progress = isOpenEnded
                             ? null
                             : getTermProgress(
@@ -175,6 +188,13 @@ export default function SavingsList({
                             item,
                             valuationDate,
                           );
+                          const compactNetInterest = isSettled
+                            ? Math.max(
+                                0,
+                                (item.actualSettlementAmount ??
+                                  item.totalAmount) - item.amount,
+                              )
+                            : accruedInterest.interestAfterTax;
                           const todayInterest = calculateInterestToday(
                             item,
                             today,
@@ -187,8 +207,34 @@ export default function SavingsList({
                           );
 
                           return (
-                          <div className="savings-item" key={item.id}>
-                            <div className="savings-item-header">
+                          <div className={`savings-item ${isItemExpanded ? "expanded" : "collapsed"}`} key={item.id}>
+                            <div
+                              className="savings-item-header savings-item-disclosure-header"
+                              onClick={(event) => {
+                                const target = event.target as HTMLElement;
+                                if (target.closest("button")) return;
+                                if (!isItemExpanded) {
+                                  toggleItemDetails(item.id);
+                                  return;
+                                }
+                                if (target.closest("input, label")) return;
+                                toggleItemDetails(item.id);
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className="item-disclosure-toggle"
+                                onClick={() => toggleItemDetails(item.id)}
+                                aria-expanded={isItemExpanded}
+                                aria-controls={`savings-item-details-${item.id}`}
+                                aria-label={
+                                  isItemExpanded
+                                    ? `Thu gọn khoản gửi ${item.name}`
+                                    : `Mở khoản gửi ${item.name}`
+                                }
+                              >
+                                {isItemExpanded ? "−" : "+"}
+                              </button>
                               <div className="item-name-section">
                                 <label htmlFor={`name-${item.id}`}>
                                   Tên khoản gửi
@@ -198,6 +244,7 @@ export default function SavingsList({
                                   type="text"
                                   className="item-name-input"
                                   value={item.name}
+                                  readOnly={!isItemExpanded}
                                   onChange={(event) =>
                                     onUpdateItemName(item.id, event.target.value)
                                   }
@@ -220,12 +267,23 @@ export default function SavingsList({
                                         ? "Đã đáo hạn"
                                         : "Đang gửi"}
                                   </span>
+                                  <small className="item-start-date">
+                                    Bắt đầu {formatDate(item.startDate)}
+                                  </small>
                                   {item.bankName && <small>{item.bankName}</small>}
                                 </div>
+                              </div>
+                              <div className="item-compact-metric item-compact-date">
+                                <span>Ngày bắt đầu</span>
+                                <strong>{formatDate(item.startDate)}</strong>
                               </div>
                               <div className="item-amount">
                                 <span>Vốn gửi</span>
                                 <strong>{formatCurrency(item.amount)}</strong>
+                              </div>
+                              <div className="item-compact-metric item-compact-profit">
+                                <span>Lãi ròng đến hôm nay</span>
+                                <strong>+{formatCurrency(compactNetInterest)}</strong>
                               </div>
                               <div className="item-actions">
                                 {!isSettled && (
@@ -264,6 +322,11 @@ export default function SavingsList({
                                 </button>
                               </div>
                             </div>
+                            <div
+                              id={`savings-item-details-${item.id}`}
+                              className="savings-item-body"
+                              hidden={!isItemExpanded}
+                            >
                             {isSettled ? (
                               <div className="settled-result-strip">
                                 <div>
@@ -671,6 +734,7 @@ export default function SavingsList({
                                   </div>
                                 )}
                             </>
+                            </div>
                           </div>
                           );
                         })}
