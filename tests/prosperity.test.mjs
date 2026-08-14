@@ -13,6 +13,38 @@ import {
   calculateSavings,
 } from '../lib/savings.ts';
 
+test('fixed savings total matches accrued value at maturity', () => {
+  const calculation = calculateSavings(
+    10_650_000,
+    7,
+    5,
+    '2026-03-11',
+  );
+  const item = {
+    id: 1,
+    name: 'Tiền của tôi',
+    amount: 10_650_000,
+    interestRate: 7,
+    term: 5,
+    startDate: '2026-03-11',
+    ...calculation,
+    history: [],
+    maturityInstruction: 'decide-later',
+    status: 'active',
+  };
+  const accruedAtMaturity = calculateAccruedInterest(
+    item,
+    calculation.maturityDate,
+  );
+
+  assert.equal(calculation.maturityDate, '2026-08-11');
+  assert.equal(calculation.interest, 312_497);
+  assert.equal(Math.round(calculation.tax), 15_625);
+  assert.equal(Math.round(calculation.interestAfterTax), 296_872);
+  assert.equal(Math.round(calculation.totalAmount), 10_946_872);
+  assert.equal(calculation.totalAmount, accruedAtMaturity.totalAmount);
+});
+
 test('open-ended savings accrues until withdrawal and taxes only interest', () => {
   const calculation = calculateSavings(
     10_000_000,

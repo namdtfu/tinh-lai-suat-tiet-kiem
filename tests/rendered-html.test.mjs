@@ -66,7 +66,7 @@ test("keeps reinvestment history and term progress in the product source", async
   assert.match(page, /role="progressbar"/);
   assert.match(page, /className="history-timeline"/);
   assert.match(page, /item\.totalAmount/);
-  assert.match(page, /\(1 \+ dailyRate\) \*\* days - 1/);
+  assert.match(page, /amount \* \(interestRate \/ 100\) \* \(days \/ 365\)/);
   assert.match(page, /storedSavings\.map\(recalculateSavingsItem\)/);
   assert.match(page, /Editing and reinvesting both replace the source item/);
   assert.match(page, /cashRemainder/);
@@ -136,17 +136,17 @@ test("opens new deposits in a modal and edits in a responsive side panel", async
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.savings-side-editor/);
 });
 
-test("matches the reference daily-compounding calculation", () => {
-  const principal = 35_406_152;
-  const annualRate = 6.8 / 100;
-  const days = 150;
-  const interest = principal * ((1 + annualRate / 365) ** days - 1);
+test("matches the reference simple daily-interest calculation", () => {
+  const principal = 10_650_000;
+  const annualRate = 7 / 100;
+  const days = 153;
+  const interest = Math.floor(principal * annualRate * (days / 365));
   const deduction = interest * 0.05;
   const finalAmount = principal + interest - deduction;
 
-  assert.equal(Math.round(interest), 1_003_292);
-  assert.equal(Math.round(deduction), 50_165);
-  assert.equal(Math.round(finalAmount), 36_359_279);
+  assert.equal(interest, 312_497);
+  assert.equal(Math.round(deduction), 15_625);
+  assert.equal(Math.round(finalAmount), 10_946_872);
 });
 
 test("calculates accrued net interest only through today or maturity", async () => {

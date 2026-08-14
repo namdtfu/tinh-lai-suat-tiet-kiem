@@ -209,8 +209,9 @@ export function calculateSavings(
   }
   const maturityDate = addMonthsClamped(startDate, term);
   const days = daysBetween(startDate, maturityDate);
-  const dailyRate = interestRate / 100 / 365;
-  const interest = amount * ((1 + dailyRate) ** days - 1);
+  const interest = Math.floor(
+    amount * (interestRate / 100) * (days / 365),
+  );
   const tax = interest * INTEREST_DEDUCTION_RATE;
   const interestAfterTax = interest - tax;
 
